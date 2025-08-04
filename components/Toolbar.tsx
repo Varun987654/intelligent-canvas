@@ -1,0 +1,142 @@
+'use client'
+
+import { DrawingSettings } from '@/types/canvas'
+
+interface ToolbarProps {
+  settings: DrawingSettings
+  onSettingsChange: (settings: DrawingSettings) => void
+  onClearCanvas: () => void
+}
+
+const PRESET_COLORS = [
+  '#000000', '#FF0000', '#00FF00', '#0000FF', 
+  '#FFFF00', '#FF00FF', '#00FFFF', '#FFA500',
+  '#800080', '#FFC0CB', '#A52A2A', '#808080'
+]
+
+export default function Toolbar({ settings, onSettingsChange, onClearCanvas }: ToolbarProps) {
+  const updateSetting = <K extends keyof DrawingSettings>(
+    key: K, 
+    value: DrawingSettings[K]
+  ) => {
+    onSettingsChange({ ...settings, [key]: value })
+  }
+
+  return (
+    <div className="bg-gradient-to-r from-gray-900 to-gray-800 p-4 shadow-2xl">
+      <div className="flex items-center justify-between gap-6 max-w-7xl mx-auto">
+        {/* Left Section - Tools */}
+        <div className="flex items-center gap-6">
+          {/* Tool Selection */}
+          <div className="flex gap-2 bg-gray-800/50 p-1 rounded-lg">
+            <button
+              onClick={() => updateSetting('tool', 'pen')}
+              className={`px-4 py-2 rounded-md font-medium transition-all duration-200 ${
+                settings.tool === 'pen' 
+                  ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25' 
+                  : 'text-gray-400 hover:text-white hover:bg-gray-700'
+              }`}
+            >
+              <span className="flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+                Pen
+              </span>
+            </button>
+            <button
+              onClick={() => updateSetting('tool', 'eraser')}
+              className={`px-4 py-2 rounded-md font-medium transition-all duration-200 ${
+                settings.tool === 'eraser' 
+                  ? 'bg-pink-500 text-white shadow-lg shadow-pink-500/25' 
+                  : 'text-gray-400 hover:text-white hover:bg-gray-700'
+              }`}
+            >
+              <span className="flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                Eraser
+              </span>
+            </button>
+          </div>
+
+          {/* Color Selection - Only show for pen */}
+          {settings.tool === 'pen' && (
+            <div className="flex items-center gap-3">
+              <span className="text-gray-400 text-sm">Color:</span>
+              <div className="flex items-center gap-2">
+                {/* Preset Colors */}
+                <div className="flex gap-1">
+                  {PRESET_COLORS.map((presetColor) => (
+                    <button
+                      key={presetColor}
+                      onClick={() => updateSetting('color', presetColor)}
+                      className={`w-7 h-7 rounded-full border-2 transition-all duration-200 hover:scale-110 ${
+                        settings.color === presetColor 
+                          ? 'border-white shadow-lg' 
+                          : 'border-gray-600 hover:border-gray-400'
+                      }`}
+                      style={{ backgroundColor: presetColor }}
+                    />
+                  ))}
+                </div>
+                {/* Custom Color Picker */}
+                <div className="relative">
+                  <input
+                    type="color"
+                    value={settings.color}
+                    onChange={(e) => updateSetting('color', e.target.value)}
+                    className="w-10 h-10 rounded-lg cursor-pointer bg-transparent"
+                    style={{ 
+                      backgroundColor: settings.color,
+                      boxShadow: '0 0 0 2px rgba(255,255,255,0.2)'
+                    }}
+                  />
+                  <div className="absolute inset-0 rounded-lg pointer-events-none border-2 border-gray-600 hover:border-gray-400 transition-colors" />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Brush Size */}
+          <div className="flex items-center gap-3">
+            <span className="text-gray-400 text-sm">Size:</span>
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min="1"
+                max="20"
+                value={settings.strokeWidth}
+                onChange={(e) => updateSetting('strokeWidth', Number(e.target.value))}
+                className="w-32 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                style={{
+                  background: `linear-gradient(to right, #3B82F6 0%, #3B82F6 ${(settings.strokeWidth - 1) * 100 / 19}%, #374151 ${(settings.strokeWidth - 1) * 100 / 19}%, #374151 100%)`
+                }}
+              />
+              <div className="w-10 h-10 bg-gray-700 rounded-lg flex items-center justify-center">
+                <div 
+                  className="bg-white rounded-full transition-all duration-200"
+                  style={{ 
+                    width: `${Math.min(settings.strokeWidth, 20)}px`, 
+                    height: `${Math.min(settings.strokeWidth, 20)}px` 
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Section - Actions */}
+        <div className="flex gap-2">
+          <button
+            onClick={onClearCanvas}
+            className="px-6 py-2 bg-red-500/10 text-red-400 rounded-lg hover:bg-red-500/20 transition-all duration-200 font-medium border border-red-500/20"
+          >
+            Clear Canvas
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
