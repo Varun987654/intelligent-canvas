@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import prisma from '@/lib/prisma'
+import { revalidatePath } from 'next/cache'
+import { uploadThumbnail, deleteThumbnail } from '@/lib/cloudinary'
 
 // GET - Fetch single canvas
 export async function GET(
@@ -62,7 +64,7 @@ export async function PUT(
     }
 
     const body = await request.json()
-    const { name, data, thumbnail } = body
+    const { name, data, thumbnailDataUrl } = body
 
     // First verify ownership
     const existingCanvas = await prisma.canvas.findFirst({
@@ -79,7 +81,10 @@ export async function PUT(
       )
     }
 
-    // Now update using only the unique id
+    // Determine if we're processing a thumbnail
+    const isProcessingThumbnail = thumbnailDataUrl && thumbnailDataUrl !== 'skip'
+
+    // STEP 1: Update canvas data immediately
     const canvas = await prisma.canvas.update({
       where: {
         id: id,
@@ -87,11 +92,45 @@ export async function PUT(
       data: {
         ...(name && { name: name.trim() }),
         ...(data && { data }),
-        ...(thumbnail && { thumbnail }),
+        // Set status to PROCESSING if we have a thumbnail to upload
+        ...(isProcessingThumbnail && { thumbnailStatus: 'PROCESSING' }),
       }
     })
 
+    // Invalidate dashboard immediately so it shows processing state
+    revalidatePath('/dashboard')
+
+    // STEP 2: Process thumbnail in background (don't await)
+    if (isProcessingThumbnail) {
+      uploadThumbnail(thumbnailDataUrl, id)
+        .then(async (thumbnailUrl) => {
+          // Update canvas with thumbnail URL and mark as READY
+          await prisma.canvas.update({
+            where: { id },
+            data: { 
+              thumbnail: thumbnailUrl,
+              thumbnailStatus: 'READY'
+            }
+          })
+          // Invalidate dashboard again to show the thumbnail
+          revalidatePath('/dashboard')
+        })
+        .catch(async (error) => {
+          console.error('Thumbnail upload failed:', error)
+          // Mark as FAILED so UI can show error state
+          await prisma.canvas.update({
+            where: { id },
+            data: { 
+              thumbnailStatus: 'FAILED'
+            }
+          })
+          revalidatePath('/dashboard')
+        })
+    }
+
+    // STEP 3: Return immediately (don't wait for thumbnail)
     return NextResponse.json({ canvas })
+    
   } catch (error) {
     console.error('Error updating canvas:', error)
     return NextResponse.json(
@@ -118,19 +157,35 @@ export async function DELETE(
       )
     }
 
-    const canvas = await prisma.canvas.deleteMany({
+    // Get canvas to check if it has a thumbnail
+    const existingCanvas = await prisma.canvas.findFirst({
       where: {
         id: id,
         userId: session.user.id,
       }
     })
 
-    if (canvas.count === 0) {
+    if (!existingCanvas) {
       return NextResponse.json(
         { error: 'Canvas not found' },
         { status: 404 }
       )
     }
+
+    // Delete thumbnail from Cloudinary if it exists
+    if (existingCanvas.thumbnail) {
+      deleteThumbnail(id).catch(console.error)
+    }
+
+    // Delete from database
+    await prisma.canvas.delete({
+      where: {
+        id: id,
+      }
+    })
+    
+    // Invalidate dashboard cache
+    revalidatePath('/dashboard')
 
     return NextResponse.json({ success: true })
   } catch (error) {

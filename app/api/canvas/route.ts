@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import prisma from '@/lib/prisma'
+import { revalidatePath } from 'next/cache'
 
 // GET - Fetch user's canvases
 export async function GET() {
@@ -64,8 +65,12 @@ export async function POST(request: NextRequest) {
         name: name.trim(),
         data: data || {},
         userId: session.user.id,
+        thumbnailStatus: 'READY',
       }
     })
+
+    // CRITICAL FIX: Invalidate dashboard cache after creating canvas
+    revalidatePath('/dashboard')
 
     return NextResponse.json({ canvas })
   } catch (error) {

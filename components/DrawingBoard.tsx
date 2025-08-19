@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, forwardRef, useImperativeHandle } from 'react'
+import { useState, useRef, forwardRef, useImperativeHandle, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import Toolbar from './Toolbar'
 import { DrawingSettings, LineData } from '@/types/canvas'
@@ -15,7 +15,9 @@ const Canvas = dynamic(() => import('./Canvas'), {
   )
 })
 
-const initialSettings: DrawingSettings = {
+const SETTINGS_STORAGE_KEY = 'canvasDrawingSettings'
+
+const defaultSettings: DrawingSettings = {
   tool: 'pen',
   color: '#000000',
   strokeWidth: 3
@@ -28,21 +30,42 @@ interface DrawingBoardProps {
 
 export interface DrawingBoardRef {
   getCanvasData: () => { lines: LineData[] }
+  getThumbnail: () => string | null
 }
 
 const DrawingBoard = forwardRef<DrawingBoardRef, DrawingBoardProps>(({ initialData, onLinesChange }, ref) => {
-  const [settings, setSettings] = useState<DrawingSettings>(initialSettings)
+  // Initialize settings from localStorage if available
+  const [settings, setSettings] = useState<DrawingSettings>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(SETTINGS_STORAGE_KEY)
+      if (saved) {
+        try {
+          return JSON.parse(saved)
+        } catch (e) {
+          console.error('Failed to parse saved settings:', e)
+        }
+      }
+    }
+    return defaultSettings
+  })
+
   const canvasRef = useRef<CanvasRef>(null)
+
+  // Save settings to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings))
+  }, [settings])
 
   const handleClearCanvas = () => {
     canvasRef.current?.clearCanvas()
   }
 
-  // Expose method to get canvas data
+  // Expose methods to get canvas data AND thumbnail
   useImperativeHandle(ref, () => ({
     getCanvasData: () => ({
       lines: canvasRef.current?.getLines() || []
-    })
+    }),
+    getThumbnail: () => canvasRef.current?.getThumbnail() || null
   }), [])
 
   return (

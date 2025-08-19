@@ -3,6 +3,10 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import Link from 'next/link'
 import prisma from '@/lib/prisma'
+import DeleteCanvasButton from '@/components/DeleteCanvasButton'
+import DashboardRefresh from '@/components/DashboardRefresh'
+import DashboardActions from '@/components/DashboardActions'
+import DashboardPolling from '@/components/DashboardPolling'
 
 async function getCanvases(userId: string) {
   return await prisma.canvas.findMany({
@@ -12,6 +16,7 @@ async function getCanvases(userId: string) {
       id: true,
       name: true,
       thumbnail: true,
+      thumbnailStatus: true,
       createdAt: true,
       updatedAt: true,
     }
@@ -26,9 +31,12 @@ export default async function DashboardPage() {
   }
 
   const canvases = await getCanvases(session.user.id)
+  const hasProcessingThumbnails = canvases.some(c => c.thumbnailStatus === 'PROCESSING')
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <DashboardRefresh />
+      {hasProcessingThumbnails && <DashboardPolling />}
       <div className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-8 flex justify-between items-center">
@@ -40,55 +48,57 @@ export default async function DashboardPage() {
               Welcome back, {session.user.name || session.user.email}!
             </p>
           </div>
-          <div className="flex gap-4">
-            <Link 
-              href="/canvas/new"
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              + New Canvas
-            </Link>
-            <Link 
-              href="/api/auth/signout"
-              className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
-            >
-              Sign Out
-            </Link>
-          </div>
+          <DashboardActions />
         </div>
 
         {/* Canvas Grid */}
         {canvases.length === 0 ? (
           <div className="bg-white rounded-lg shadow p-12 text-center">
             <p className="text-gray-500 mb-4">No canvases yet. Create your first one!</p>
-            <Link 
-              href="/canvas/new"
-              className="inline-block px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              Create First Canvas
-            </Link>
+            <DashboardActions />
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {canvases.map((canvas) => (
-              <Link
-                key={canvas.id}
-                href={`/canvas/${canvas.id}`}
-                className="group block"
+              <div 
+                key={canvas.id} 
+                className="group relative bg-white rounded-lg shadow hover:shadow-lg transition-shadow overflow-hidden"
               >
-                <div className="bg-white rounded-lg shadow hover:shadow-lg transition-shadow overflow-hidden">
+                {/* Delete button OUTSIDE the Link */}
+                <DeleteCanvasButton 
+                  canvasId={canvas.id} 
+                  canvasName={canvas.name}
+                />
+                
+                {/* Link only wraps the clickable content */}
+                <Link href={`/canvas/${canvas.id}`} className="block">
                   {/* Thumbnail */}
                   <div className="aspect-video bg-gray-100 relative">
-                    {canvas.thumbnail ? (
+                    {canvas.thumbnailStatus === 'PROCESSING' ? (
+                      <div className="flex flex-col items-center justify-center h-full">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mb-2"></div>
+                        <span className="text-sm text-gray-500">Processing thumbnail...</span>
+                      </div>
+                    ) : canvas.thumbnailStatus === 'FAILED' ? (
+                      <div className="flex flex-col items-center justify-center h-full text-red-400">
+                        <svg className="w-12 h-12 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span className="text-xs">Thumbnail failed</span>
+                      </div>
+                    ) : canvas.thumbnail ? (
                       <img 
                         src={canvas.thumbnail} 
                         alt={canvas.name}
                         className="w-full h-full object-cover"
+                        loading="lazy"
                       />
                     ) : (
-                      <div className="flex items-center justify-center h-full text-gray-400">
-                        <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      <div className="flex flex-col items-center justify-center h-full text-gray-400">
+                        <svg className="w-12 h-12 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                         </svg>
+                        <span className="text-xs">No preview</span>
                       </div>
                     )}
                   </div>
@@ -102,8 +112,8 @@ export default async function DashboardPage() {
                       Updated {new Date(canvas.updatedAt).toLocaleDateString()}
                     </p>
                   </div>
-                </div>
-              </Link>
+                </Link>
+              </div>
             ))}
           </div>
         )}

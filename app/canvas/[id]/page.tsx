@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { Canvas } from '@prisma/client'
 import { LineData } from '@/types/canvas'
 import type { DrawingBoardRef } from '@/components/DrawingBoard'
+import DeleteCanvasButton from '@/components/DeleteCanvasButton'
 
 const DrawingBoard = dynamic(() => import('@/components/DrawingBoard'), {
   ssr: false,
@@ -76,7 +77,7 @@ export default function EditCanvasPage({ params }: PageProps) {
     }
   }, [])
 
-  // Auto-save function
+  // Auto-save function - ONLY saves data, NO thumbnails for performance
   const autoSave = useCallback(async () => {
     const canvasData = drawingBoardRef.current?.getCanvasData()
     
@@ -90,6 +91,7 @@ export default function EditCanvasPage({ params }: PageProps) {
         },
         body: JSON.stringify({
           data: canvasData,
+          thumbnailDataUrl: 'skip',  // Never send thumbnail on auto-save
         }),
       })
 
@@ -108,18 +110,20 @@ export default function EditCanvasPage({ params }: PageProps) {
       clearTimeout(autoSaveTimerRef.current)
     }
     
-    // Set new timer for 2 seconds
+    // Set new timer for 50ms
     autoSaveTimerRef.current = setTimeout(() => {
       autoSave()
     }, 50)
   }, [autoSave])
 
+  // Manual save - Sends both data and thumbnail
   const handleSave = async () => {
     setIsSaving(true)
     setError(null)
     
     try {
       const canvasData = drawingBoardRef.current?.getCanvasData()
+      const thumbnailDataUrl = drawingBoardRef.current?.getThumbnail()
       
       if (!canvasData) {
         throw new Error('Unable to get canvas data')
@@ -132,6 +136,7 @@ export default function EditCanvasPage({ params }: PageProps) {
         },
         body: JSON.stringify({
           data: canvasData,
+          thumbnailDataUrl: thumbnailDataUrl || 'skip',
         }),
       })
 
@@ -142,6 +147,8 @@ export default function EditCanvasPage({ params }: PageProps) {
 
       setLastSaved(new Date())
       setError(null)
+      // NO router.refresh() here - not needed!
+      
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Failed to save canvas')
     } finally {
@@ -194,13 +201,19 @@ export default function EditCanvasPage({ params }: PageProps) {
               </span>
             )}
           </div>
-          <button
-            onClick={handleSave}
-            disabled={isSaving}
-            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isSaving ? 'Saving...' : 'Save Changes'}
-          </button>
+          <div className="flex items-center gap-3">
+            <DeleteCanvasButton 
+              canvasId={canvas.id} 
+              canvasName={canvas.name}
+            />
+            <button
+              onClick={handleSave}
+              disabled={isSaving}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isSaving ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
         </div>
       </div>
 

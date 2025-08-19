@@ -15,6 +15,7 @@ interface CanvasProps {
 export interface CanvasRef {
   clearCanvas: () => void
   getLines: () => LineData[]
+  getThumbnail: () => string | null
 }
 
 const Canvas = forwardRef<CanvasRef, CanvasProps>(({ settings, onLinesChange, initialData }, ref) => {
@@ -83,7 +84,22 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(({ settings, onLinesChange, in
       layerRef.current?.destroyChildren()
       layerRef.current?.draw()
     },
-    getLines: () => lines
+    getLines: () => lines,
+    getThumbnail: () => {
+      const stage = stageRef.current
+      if (!stage) return null
+      
+      try {
+        return stage.toDataURL({
+          pixelRatio: 0.5,  // Lower resolution for thumbnails
+          mimeType: 'image/jpeg',
+          quality: 0.8
+        })
+      } catch (error) {
+        console.error('Failed to generate thumbnail:', error)
+        return null
+      }
+    }
   }), [lines])
 
   const startDrawing = (e: KonvaEventObject<MouseEvent | TouchEvent>) => {
@@ -134,12 +150,12 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(({ settings, onLinesChange, in
     // Convert the Konva line to our LineData format and add to state
     const points = currentLineRef.current.points()
     const strokeColor = currentLineRef.current.stroke()
-const newLine: LineData = {
-  points,
-  color: typeof strokeColor === 'string' ? strokeColor : '#000000',
-  strokeWidth: currentLineRef.current.strokeWidth(),
-  tool: currentLineRef.current.globalCompositeOperation() === 'destination-out' ? 'eraser' : 'pen'
-}
+    const newLine: LineData = {
+      points,
+      color: typeof strokeColor === 'string' ? strokeColor : '#000000',
+      strokeWidth: currentLineRef.current.strokeWidth(),
+      tool: currentLineRef.current.globalCompositeOperation() === 'destination-out' ? 'eraser' : 'pen'
+    }
 
     const updatedLines = [...lines, newLine]
     setLines(updatedLines)
