@@ -24,13 +24,12 @@ interface PageProps {
 }
 
 // Type guard to validate canvas data structure
+// Change the function to this cleaner version:
 function isValidCanvasData(data: unknown): data is { lines: LineData[] } {
-  return (
-    typeof data === 'object' &&
-    data !== null &&
-    'lines' in data &&
-    Array.isArray((data as { lines: unknown }).lines)
-  )
+  if (typeof data !== 'object' || data === null) return false
+  if (!('lines' in data)) return false
+  const obj = data as Record<string, unknown>
+  return Array.isArray(obj.lines)
 }
 
 export default function EditCanvasPage({ params }: PageProps) {
