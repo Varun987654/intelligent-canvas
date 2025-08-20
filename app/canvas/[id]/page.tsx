@@ -8,6 +8,7 @@ import { Canvas } from '@prisma/client'
 import { LineData } from '@/types/canvas'
 import type { DrawingBoardRef } from '@/components/DrawingBoard'
 import DeleteCanvasButton from '@/components/DeleteCanvasButton'
+import { connectSocket, disconnectSocket, getSocket } from '@/lib/socket'
 
 const DrawingBoard = dynamic(() => import('@/components/DrawingBoard'), {
   ssr: false,
@@ -41,6 +42,7 @@ export default function EditCanvasPage({ params }: PageProps) {
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
+  const [onlineUsers, setOnlineUsers] = useState(0)  // ADD THIS
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   // Load canvas data
@@ -66,6 +68,41 @@ export default function EditCanvasPage({ params }: PageProps) {
     }
 
     loadCanvas()
+  }, [id])
+
+  // Socket.io connection
+  useEffect(() => {
+    const socket = connectSocket()
+    
+    socket.on('connect', () => {
+      console.log('✅ Connected to Socket.io server!')
+      // Join the canvas room
+      socket.emit('join-canvas', id)
+    })
+    
+    socket.on('user-joined', (data) => {
+      console.log('👤 User joined:', data)
+    })
+
+    socket.on('user-left', (data) => {
+      console.log('👤 User left:', data)
+    })
+
+    socket.on('canvas-users', (data) => {
+      console.log('👥 Current users in canvas:', data)
+      setOnlineUsers(data.users.length)  // UPDATE USER COUNT
+    })
+    
+    // Handle remote drawing events from other users
+    socket.on('remote-draw', (data) => {
+      console.log('🎨 Remote drawing received:', data)
+      drawingBoardRef.current?.addRemoteLine(data.line)
+    })
+    
+    return () => {
+      socket.emit('leave-canvas')
+      disconnectSocket()
+    }
   }, [id])
 
   // Clean up timer on unmount
@@ -103,18 +140,26 @@ export default function EditCanvasPage({ params }: PageProps) {
     }
   }, [id])
 
-  // Debounced auto-save handler
-  const handleCanvasChange = useCallback(() => {
-    // Clear existing timer
+  // Debounced auto-save handler AND drawing broadcaster
+  const handleCanvasChange = useCallback((lines: LineData[]) => {
+    // Debounce the auto-save
     if (autoSaveTimerRef.current) {
       clearTimeout(autoSaveTimerRef.current)
     }
-    
-    // Set new timer for 50ms
     autoSaveTimerRef.current = setTimeout(() => {
       autoSave()
     }, 50)
-  }, [autoSave])
+
+    // Broadcast the last line drawn in real-time
+    const socket = getSocket()
+    if (socket.connected && lines.length > 0) {
+      const lastLine = lines[lines.length - 1]
+      socket.emit('canvas-draw', {
+        canvasId: id,
+        line: lastLine
+      })
+    }
+  }, [autoSave, id])
 
   // Manual save - Sends both data and thumbnail
   const handleSave = async () => {
@@ -147,7 +192,6 @@ export default function EditCanvasPage({ params }: PageProps) {
 
       setLastSaved(new Date())
       setError(null)
-      // NO router.refresh() here - not needed!
       
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Failed to save canvas')
@@ -200,6 +244,15 @@ export default function EditCanvasPage({ params }: PageProps) {
                 Last saved: {lastSaved.toLocaleTimeString()}
               </span>
             )}
+            {/* ONLINE USERS INDICATOR */}
+            {onlineUsers > 1 && (
+              <div className="flex items-center gap-2 px-3 py-1 bg-green-500/20 rounded-full">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                <span className="text-green-400 text-sm font-medium">
+                  {onlineUsers} users online
+                </span>
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-3">
             <DeleteCanvasButton 
@@ -235,3 +288,4 @@ export default function EditCanvasPage({ params }: PageProps) {
     </div>
   )
 }
+

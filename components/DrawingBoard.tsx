@@ -31,6 +31,7 @@ interface DrawingBoardProps {
 export interface DrawingBoardRef {
   getCanvasData: () => { lines: LineData[] }
   getThumbnail: () => string | null
+  addRemoteLine: (line: LineData) => void  // ADDED THIS
 }
 
 const DrawingBoard = forwardRef<DrawingBoardRef, DrawingBoardProps>(({ initialData, onLinesChange }, ref) => {
@@ -65,7 +66,10 @@ const DrawingBoard = forwardRef<DrawingBoardRef, DrawingBoardProps>(({ initialDa
     getCanvasData: () => ({
       lines: canvasRef.current?.getLines() || []
     }),
-    getThumbnail: () => canvasRef.current?.getThumbnail() || null
+    getThumbnail: () => canvasRef.current?.getThumbnail() || null,
+    addRemoteLine: (line: LineData) => {  // ADDED THIS METHOD
+      canvasRef.current?.addRemoteLine(line)
+    }
   }), [])
 
   return (

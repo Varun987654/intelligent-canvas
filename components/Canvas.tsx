@@ -16,6 +16,7 @@ export interface CanvasRef {
   clearCanvas: () => void
   getLines: () => LineData[]
   getThumbnail: () => string | null
+  addRemoteLine: (line: LineData) => void  // ADDED THIS
 }
 
 const Canvas = forwardRef<CanvasRef, CanvasProps>(({ settings, onLinesChange, initialData }, ref) => {
@@ -99,6 +100,10 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(({ settings, onLinesChange, in
         console.error('Failed to generate thumbnail:', error)
         return null
       }
+    },
+    addRemoteLine: (line: LineData) => {  // ADDED THIS METHOD
+      setLines(prevLines => [...prevLines, line])
+      // Don't call onLinesChange here to avoid broadcast loop
     }
   }), [lines])
 
