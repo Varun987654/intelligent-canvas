@@ -29,7 +29,7 @@ function isValidCanvasData(data: unknown): data is { lines: LineData[] } {
     typeof data === 'object' &&
     data !== null &&
     'lines' in data &&
-    Array.isArray((data as any).lines)
+    Array.isArray((data as { lines: unknown }).lines)
   )
 }
 
