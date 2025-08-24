@@ -12,16 +12,20 @@ export async function uploadThumbnail(dataUrl: string, canvasId: string) {
   try {
     const result = await cloudinary.uploader.upload(dataUrl, {
       folder: 'intelligent-canvas/thumbnails',
-      public_id: canvasId,
+      public_id: canvasId,  // Keep same ID - overwrites previous
       resource_type: 'image',
       format: 'jpg',
+      overwrite: true,  // Replace existing file
+      invalidate: true,  // Invalidate CDN cache
       transformation: [
         { width: 400, height: 225, crop: 'fill' },
         { quality: 'auto:low' },
       ],
     })
     
-    return result.secure_url
+    // Add timestamp to URL only (not to filename)
+    const timestamp = Date.now()
+    return `${result.secure_url}?v=${timestamp}`
   } catch (error) {
     console.error('Cloudinary upload error:', error)
     throw new Error('Failed to upload thumbnail')

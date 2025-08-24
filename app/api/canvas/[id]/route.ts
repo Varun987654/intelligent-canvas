@@ -47,6 +47,7 @@ export async function GET(
 }
 
 // PUT - Update canvas
+// PUT - Update canvas
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -81,54 +82,39 @@ export async function PUT(
       )
     }
 
-    // Determine if we're processing a thumbnail
-    const isProcessingThumbnail = thumbnailDataUrl && thumbnailDataUrl !== 'skip'
+    // Check if we need to process thumbnail
+    const shouldProcessThumbnail = thumbnailDataUrl && thumbnailDataUrl !== 'skip'
+    
+    let thumbnailUrl: string | undefined = undefined
 
-    // STEP 1: Update canvas data immediately
+    // SYNCHRONOUS thumbnail upload
+    if (shouldProcessThumbnail) {
+      try {
+        console.log('Uploading thumbnail for canvas:', id)
+        thumbnailUrl = await uploadThumbnail(thumbnailDataUrl, id)
+        console.log('Thumbnail uploaded:', thumbnailUrl)
+      } catch (error) {
+        console.error('Thumbnail upload failed:', error)
+        // Continue without thumbnail - don't fail the whole save
+      }
+    }
+
+    // Update canvas with all data
     const canvas = await prisma.canvas.update({
-      where: {
-        id: id,
-      },
+      where: { id },
       data: {
         ...(name && { name: name.trim() }),
         ...(data && { data }),
-        // Set status to PROCESSING if we have a thumbnail to upload
-        ...(isProcessingThumbnail && { thumbnailStatus: 'PROCESSING' }),
+        ...(thumbnailUrl && { 
+          thumbnail: thumbnailUrl,
+          thumbnailStatus: 'READY'
+        }),
       }
     })
 
-    // Invalidate dashboard immediately so it shows processing state
+    // Invalidate dashboard cache
     revalidatePath('/dashboard')
 
-    // STEP 2: Process thumbnail in background (don't await)
-    if (isProcessingThumbnail) {
-      uploadThumbnail(thumbnailDataUrl, id)
-        .then(async (thumbnailUrl) => {
-          // Update canvas with thumbnail URL and mark as READY
-          await prisma.canvas.update({
-            where: { id },
-            data: { 
-              thumbnail: thumbnailUrl,
-              thumbnailStatus: 'READY'
-            }
-          })
-          // Invalidate dashboard again to show the thumbnail
-          revalidatePath('/dashboard')
-        })
-        .catch(async (error) => {
-          console.error('Thumbnail upload failed:', error)
-          // Mark as FAILED so UI can show error state
-          await prisma.canvas.update({
-            where: { id },
-            data: { 
-              thumbnailStatus: 'FAILED'
-            }
-          })
-          revalidatePath('/dashboard')
-        })
-    }
-
-    // STEP 3: Return immediately (don't wait for thumbnail)
     return NextResponse.json({ canvas })
     
   } catch (error) {

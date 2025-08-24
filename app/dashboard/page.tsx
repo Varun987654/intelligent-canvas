@@ -6,7 +6,6 @@ import prisma from '@/lib/prisma'
 import DeleteCanvasButton from '@/components/DeleteCanvasButton'
 import DashboardRefresh from '@/components/DashboardRefresh'
 import DashboardActions from '@/components/DashboardActions'
-import DashboardPolling from '@/components/DashboardPolling'
 
 async function getCanvases(userId: string) {
   return await prisma.canvas.findMany({
@@ -31,12 +30,10 @@ export default async function DashboardPage() {
   }
 
   const canvases = await getCanvases(session.user.id)
-  const hasProcessingThumbnails = canvases.some(c => c.thumbnailStatus === 'PROCESSING')
 
   return (
     <div className="min-h-screen bg-gray-50">
       <DashboardRefresh />
-      {hasProcessingThumbnails && <DashboardPolling />}
       <div className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-8 flex justify-between items-center">
