@@ -23,8 +23,6 @@ interface PageProps {
   params: Promise<{ id: string }>
 }
 
-// Type guard to validate canvas data structure
-// Change the function to this cleaner version:
 function isValidCanvasData(data: unknown): data is { lines: LineData[] } {
   if (typeof data !== 'object' || data === null) return false
   if (!('lines' in data)) return false
@@ -41,7 +39,7 @@ export default function EditCanvasPage({ params }: PageProps) {
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
-  const [onlineUsers, setOnlineUsers] = useState(0)  // ADD THIS
+  const [onlineUsers, setOnlineUsers] = useState(0)
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   // Load canvas data
@@ -75,7 +73,6 @@ export default function EditCanvasPage({ params }: PageProps) {
     
     socket.on('connect', () => {
       console.log('✅ Connected to Socket.io server!')
-      // Join the canvas room
       socket.emit('join-canvas', id)
     })
     
@@ -89,10 +86,9 @@ export default function EditCanvasPage({ params }: PageProps) {
 
     socket.on('canvas-users', (data) => {
       console.log('👥 Current users in canvas:', data)
-      setOnlineUsers(data.users.length)  // UPDATE USER COUNT
+      setOnlineUsers(data.users.length)
     })
     
-    // Handle remote drawing events from other users
     socket.on('remote-draw', (data) => {
       console.log('🎨 Remote drawing received:', data)
       drawingBoardRef.current?.addRemoteLine(data.line)
@@ -113,7 +109,7 @@ export default function EditCanvasPage({ params }: PageProps) {
     }
   }, [])
 
-  // Auto-save function - ONLY saves data, NO thumbnails for performance
+  // Auto-save function - ONLY saves data, NO thumbnails
   const autoSave = useCallback(async () => {
     const canvasData = drawingBoardRef.current?.getCanvasData()
     
@@ -127,7 +123,7 @@ export default function EditCanvasPage({ params }: PageProps) {
         },
         body: JSON.stringify({
           data: canvasData,
-          thumbnailDataUrl: 'skip',  // Never send thumbnail on auto-save
+          thumbnailDataUrl: 'skip',
         }),
       })
 
@@ -220,20 +216,32 @@ export default function EditCanvasPage({ params }: PageProps) {
     )
   }
 
-  // Safely parse and validate canvas data
   const initialData = isValidCanvasData(canvas.data) 
     ? canvas.data 
     : { lines: [] }
 
   return (
     <div className="h-screen flex flex-col bg-gray-900">
+      {/* Simple Saving Indicator */}
+      {isSaving && (
+        <div className="fixed top-20 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 flex items-center gap-3">
+          <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+          </svg>
+          <span>Saving canvas and generating thumbnail...</span>
+        </div>
+      )}
+      
       {/* Header */}
       <div className="bg-gray-800 border-b border-gray-700 px-4 py-3">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link
               href="/dashboard"
-              className="text-gray-400 hover:text-white transition-colors"
+              className={`text-gray-400 hover:text-white transition-colors ${
+                isSaving ? 'pointer-events-none opacity-50 cursor-not-allowed' : ''
+              }`}
             >
               ← Back
             </Link>
@@ -243,7 +251,6 @@ export default function EditCanvasPage({ params }: PageProps) {
                 Last saved: {lastSaved.toLocaleTimeString()}
               </span>
             )}
-            {/* ONLINE USERS INDICATOR */}
             {onlineUsers > 1 && (
               <div className="flex items-center gap-2 px-3 py-1 bg-green-500/20 rounded-full">
                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
@@ -254,10 +261,12 @@ export default function EditCanvasPage({ params }: PageProps) {
             )}
           </div>
           <div className="flex items-center gap-3">
-            <DeleteCanvasButton 
-              canvasId={canvas.id} 
-              canvasName={canvas.name}
-            />
+            <div className={isSaving ? 'pointer-events-none opacity-50' : ''}>
+              <DeleteCanvasButton 
+                canvasId={canvas.id} 
+                canvasName={canvas.name}
+              />
+            </div>
             <button
               onClick={handleSave}
               disabled={isSaving}
@@ -287,4 +296,3 @@ export default function EditCanvasPage({ params }: PageProps) {
     </div>
   )
 }
-
