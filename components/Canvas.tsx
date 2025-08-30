@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 're
 import { Stage, Layer, Line, Rect, Circle, Arrow } from 'react-konva'
 import type { KonvaEventObject } from 'konva/lib/Node'
 import Konva from 'konva'
-import { DrawingSettings, LineData, ShapeData, CanvasData } from '@/types/canvas'
+import { DrawingSettings, LineData, ShapeData, CanvasData, HistoryState } from '@/types/canvas'
 
 interface CanvasProps {
   settings: DrawingSettings
@@ -18,6 +18,8 @@ export interface CanvasRef {
   getThumbnail: () => string | null
   addRemoteLine: (line: LineData) => void
   addRemoteShape: (shape: ShapeData) => void
+  undo: () => void
+  redo: () => void
 }
 
 const Canvas = forwardRef<CanvasRef, CanvasProps>(({ settings, onLinesChange, initialData }, ref) => {
@@ -25,6 +27,12 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(({ settings, onLinesChange, in
   const [shapes, setShapes] = useState<ShapeData[]>(initialData?.shapes || [])
   const [isDrawing, setIsDrawing] = useState(false)
   const [currentShapePreview, setCurrentShapePreview] = useState<ShapeData | null>(null)
+  
+  // Add these for undo/redo
+  const [history, setHistory] = useState<HistoryState[]>([])
+  const [historyIndex, setHistoryIndex] = useState(-1)
+  const isUndoRedoRef = useRef(false)
+  
   const containerRef = useRef<HTMLDivElement>(null)
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
   
@@ -34,6 +42,28 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(({ settings, onLinesChange, in
   const isDrawingRef = useRef(false)
   const currentLineRef = useRef<Konva.Line | null>(null)
   const drawStartPoint = useRef<{ x: number; y: number } | null>(null)
+
+  // Save current state to history
+  const saveToHistory = (newLines: LineData[], newShapes: ShapeData[]) => {
+    if (isUndoRedoRef.current) return // Don't save history during undo/redo
+    
+    const newState: HistoryState = {
+      data: { lines: newLines, shapes: newShapes },
+      timestamp: Date.now()
+    }
+    
+    // Remove any states after current index (for redo consistency)
+    const newHistory = history.slice(0, historyIndex + 1)
+    newHistory.push(newState)
+    
+    // Keep only last 50 states to prevent memory issues
+    if (newHistory.length > 50) {
+      newHistory.shift()
+    }
+    
+    setHistory(newHistory)
+    setHistoryIndex(newHistory.length - 1)
+  }
 
   // Initialize with saved data
   useEffect(() => {
@@ -116,8 +146,30 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(({ settings, onLinesChange, in
     },
     addRemoteShape: (shape: ShapeData) => {
       setShapes(prevShapes => [...prevShapes, shape])
+    },
+    undo: () => {
+      if (historyIndex > 0) {
+        isUndoRedoRef.current = true
+        const prevState = history[historyIndex - 1]
+        setLines(prevState.data.lines)
+        setShapes(prevState.data.shapes)
+        setHistoryIndex(historyIndex - 1)
+        isUndoRedoRef.current = false
+        onLinesChange?.(prevState.data)
+      }
+    },
+    redo: () => {
+      if (historyIndex < history.length - 1) {
+        isUndoRedoRef.current = true
+        const nextState = history[historyIndex + 1]
+        setLines(nextState.data.lines)
+        setShapes(nextState.data.shapes)
+        setHistoryIndex(historyIndex + 1)
+        isUndoRedoRef.current = false
+        onLinesChange?.(nextState.data)
+      }
     }
-  }), [lines, shapes])
+  }), [lines, shapes, history, historyIndex])
 
   const startDrawing = (e: KonvaEventObject<MouseEvent | TouchEvent>) => {
     // Only draw on left mouse button (button = 0)
@@ -194,6 +246,7 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(({ settings, onLinesChange, in
 
       const updatedLines = [...lines, newLine]
       setLines(updatedLines)
+      saveToHistory(updatedLines, shapes)
       onLinesChange?.({ lines: updatedLines, shapes })
       currentLineRef.current = null
     }
@@ -201,6 +254,7 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(({ settings, onLinesChange, in
     else if (currentShapePreview) {
       const updatedShapes = [...shapes, currentShapePreview]
       setShapes(updatedShapes)
+      saveToHistory(lines, updatedShapes)
       onLinesChange?.({ lines, shapes: updatedShapes })
       setCurrentShapePreview(null)
     }

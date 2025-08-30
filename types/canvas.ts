@@ -23,3 +23,9 @@ export interface CanvasData {
   lines: LineData[]
   shapes: ShapeData[]
 }
+
+// Add this new interface
+export interface HistoryState {
+  data: CanvasData
+  timestamp: number
+}
