@@ -54,7 +54,6 @@ io.on('connection', (socket) => {
     if (currentCanvas) {
       socket.leave(`canvas:${currentCanvas}`);
       
-      // Remove from user tracking
       const users = canvasUsers.get(currentCanvas);
       if (users) {
         users.delete(socket.id);
@@ -63,9 +62,9 @@ io.on('connection', (socket) => {
         }
       }
       
-      // Notify others in old room
-      socket.to(`canvas:${currentCanvas}`).emit('user-left', {
-        userId: socket.id,
+      // Notify everyone in old room with updated count
+      io.to(`canvas:${currentCanvas}`).emit('canvas-users', {
+        users: Array.from(canvasUsers.get(currentCanvas) || []),
         canvasId: currentCanvas
       });
     }
@@ -83,15 +82,8 @@ io.on('connection', (socket) => {
     console.log(`👤 User ${socket.id} joined canvas:${canvasId}`);
     console.log(`   Total users in canvas: ${canvasUsers.get(canvasId)!.size}`);
     
-    // Notify others in the room
-    socket.to(`canvas:${canvasId}`).emit('user-joined', {
-      userId: socket.id,
-      canvasId: canvasId,
-      timestamp: new Date().toISOString()
-    });
-    
-    // Send current users list to the new user
-    socket.emit('canvas-users', {
+    // Broadcast updated user list to EVERYONE in the room (including new user)
+    io.to(`canvas:${canvasId}`).emit('canvas-users', {
       users: Array.from(canvasUsers.get(canvasId) || []),
       canvasId: canvasId
     });
@@ -102,7 +94,6 @@ io.on('connection', (socket) => {
     if (currentCanvas) {
       socket.leave(`canvas:${currentCanvas}`);
       
-      // Remove from user tracking
       const users = canvasUsers.get(currentCanvas);
       if (users) {
         users.delete(socket.id);
@@ -113,9 +104,9 @@ io.on('connection', (socket) => {
       
       console.log(`👤 User ${socket.id} left canvas:${currentCanvas}`);
       
-      // Notify others
-      socket.to(`canvas:${currentCanvas}`).emit('user-left', {
-        userId: socket.id,
+      // Broadcast updated user count to remaining users
+      io.to(`canvas:${currentCanvas}`).emit('canvas-users', {
+        users: Array.from(canvasUsers.get(currentCanvas) || []),
         canvasId: currentCanvas
       });
       
@@ -133,16 +124,18 @@ io.on('connection', (socket) => {
   });
 
   // Handle drawing events
-socket.on('canvas-draw', (data: { canvasId: string; line: any }) => {
-       console.log(`🎨 Drawing received for canvas:${data.canvasId}`)
-       
-       // Broadcast to everyone in the room EXCEPT the sender
-       socket.to(`canvas:${data.canvasId}`).emit('remote-draw', {
-         userId: socket.id,
-         line: data.line,
-         timestamp: new Date().toISOString()
-       })
-     })
+  socket.on('canvas-draw', (data: { canvasId: string; type?: string; data?: any; line?: any }) => {
+    console.log(`🎨 Drawing received for canvas:${data.canvasId}, type:${data.type || 'line'}`)
+    
+    // Broadcast to everyone in the room EXCEPT the sender
+    socket.to(`canvas:${data.canvasId}`).emit('remote-draw', {
+      userId: socket.id,
+      type: data.type || 'line',
+      data: data.data,
+      line: data.line, // backward compatibility
+      timestamp: new Date().toISOString()
+    })
+  })
   
   // Handle disconnection
   socket.on('disconnect', () => {
@@ -158,9 +151,9 @@ socket.on('canvas-draw', (data: { canvasId: string; line: any }) => {
         }
       }
       
-      // Notify others
-      io.to(`canvas:${currentCanvas}`).emit('user-left', {
-        userId: socket.id,
+      // Broadcast updated user count to remaining users
+      io.to(`canvas:${currentCanvas}`).emit('canvas-users', {
+        users: Array.from(canvasUsers.get(currentCanvas) || []),
         canvasId: currentCanvas
       });
     }

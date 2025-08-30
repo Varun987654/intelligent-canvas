@@ -27,42 +27,102 @@ export default function Toolbar({ settings, onSettingsChange, onClearCanvas }: T
       <div className="flex items-center justify-between gap-6 max-w-7xl mx-auto">
         {/* Left Section - Tools */}
         <div className="flex items-center gap-6">
-          {/* Tool Selection */}
+          {/* Drawing Tools */}
           <div className="flex gap-2 bg-gray-800/50 p-1 rounded-lg">
             <button
               onClick={() => updateSetting('tool', 'pen')}
-              className={`px-4 py-2 rounded-md font-medium transition-all duration-200 ${
+              className={`px-3 py-2 rounded-md font-medium transition-all duration-200 ${
                 settings.tool === 'pen' 
                   ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25' 
                   : 'text-gray-400 hover:text-white hover:bg-gray-700'
               }`}
+              title="Pen Tool (P)"
             >
-              <span className="flex items-center gap-2">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                </svg>
-                Pen
-              </span>
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+              </svg>
             </button>
+            
             <button
               onClick={() => updateSetting('tool', 'eraser')}
-              className={`px-4 py-2 rounded-md font-medium transition-all duration-200 ${
+              className={`px-3 py-2 rounded-md font-medium transition-all duration-200 ${
                 settings.tool === 'eraser' 
                   ? 'bg-pink-500 text-white shadow-lg shadow-pink-500/25' 
                   : 'text-gray-400 hover:text-white hover:bg-gray-700'
               }`}
+              title="Eraser Tool (E)"
             >
-              <span className="flex items-center gap-2">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-                Eraser
-              </span>
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </button>
+            
+            {/* Shape Tools Separator */}
+            <div className="w-px bg-gray-600 mx-1" />
+            
+            {/* Rectangle Tool */}
+            <button
+              onClick={() => updateSetting('tool', 'rectangle')}
+              className={`px-3 py-2 rounded-md font-medium transition-all duration-200 ${
+                settings.tool === 'rectangle' 
+                  ? 'bg-green-500 text-white shadow-lg shadow-green-500/25' 
+                  : 'text-gray-400 hover:text-white hover:bg-gray-700'
+              }`}
+              title="Rectangle Tool (R)"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <rect x="4" y="6" width="16" height="12" strokeWidth={2} />
+              </svg>
+            </button>
+            
+            {/* Circle Tool */}
+            <button
+              onClick={() => updateSetting('tool', 'circle')}
+              className={`px-3 py-2 rounded-md font-medium transition-all duration-200 ${
+                settings.tool === 'circle' 
+                  ? 'bg-purple-500 text-white shadow-lg shadow-purple-500/25' 
+                  : 'text-gray-400 hover:text-white hover:bg-gray-700'
+              }`}
+              title="Circle Tool (C)"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="8" strokeWidth={2} />
+              </svg>
+            </button>
+            
+            {/* Arrow Tool */}
+            <button
+              onClick={() => updateSetting('tool', 'arrow')}
+              className={`px-3 py-2 rounded-md font-medium transition-all duration-200 ${
+                settings.tool === 'arrow' 
+                  ? 'bg-yellow-500 text-white shadow-lg shadow-yellow-500/25' 
+                  : 'text-gray-400 hover:text-white hover:bg-gray-700'
+              }`}
+              title="Arrow Tool (A)"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+              </svg>
+            </button>
+            
+            {/* Line Tool */}
+            <button
+              onClick={() => updateSetting('tool', 'line')}
+              className={`px-3 py-2 rounded-md font-medium transition-all duration-200 ${
+                settings.tool === 'line' 
+                  ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/25' 
+                  : 'text-gray-400 hover:text-white hover:bg-gray-700'
+              }`}
+              title="Line Tool (L)"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 20L20 4" />
+              </svg>
             </button>
           </div>
 
-          {/* Color Selection - Only show for pen */}
-          {settings.tool === 'pen' && (
+          {/* Color Selection - Show for all tools except eraser */}
+          {settings.tool !== 'eraser' && (
             <div className="flex items-center gap-3">
               <span className="text-gray-400 text-sm">Color:</span>
               <div className="flex items-center gap-2">

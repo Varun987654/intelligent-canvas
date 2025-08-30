@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { Canvas } from '@prisma/client'
-import { LineData } from '@/types/canvas'
+import { LineData, ShapeData, CanvasData } from '@/types/canvas'
 import type { DrawingBoardRef } from '@/components/DrawingBoard'
 import DeleteCanvasButton from '@/components/DeleteCanvasButton'
 import { connectSocket, disconnectSocket, getSocket } from '@/lib/socket'
@@ -23,11 +23,21 @@ interface PageProps {
   params: Promise<{ id: string }>
 }
 
-function isValidCanvasData(data: unknown): data is { lines: LineData[] } {
+function isValidCanvasData(data: unknown): data is CanvasData {
   if (typeof data !== 'object' || data === null) return false
-  if (!('lines' in data)) return false
   const obj = data as Record<string, unknown>
-  return Array.isArray(obj.lines)
+  
+  // Check if it has lines array
+  if (!('lines' in obj) || !Array.isArray(obj.lines)) {
+    return false
+  }
+  
+  // Shapes array is optional for backward compatibility
+  if ('shapes' in obj && !Array.isArray(obj.shapes)) {
+    return false
+  }
+  
+  return true
 }
 
 export default function EditCanvasPage({ params }: PageProps) {
@@ -91,7 +101,14 @@ export default function EditCanvasPage({ params }: PageProps) {
     
     socket.on('remote-draw', (data) => {
       console.log('🎨 Remote drawing received:', data)
-      drawingBoardRef.current?.addRemoteLine(data.line)
+      if (data.type === 'line') {
+        drawingBoardRef.current?.addRemoteLine(data.data)
+      } else if (data.type === 'shape') {
+        drawingBoardRef.current?.addRemoteShape(data.data)
+      } else {
+        // Backward compatibility - assume it's a line
+        drawingBoardRef.current?.addRemoteLine(data.line)
+      }
     })
     
     return () => {
@@ -136,7 +153,10 @@ export default function EditCanvasPage({ params }: PageProps) {
   }, [id])
 
   // Debounced auto-save handler AND drawing broadcaster
-  const handleCanvasChange = useCallback((lines: LineData[]) => {
+  // Track previous data to detect what's new
+  const previousDataRef = useRef<CanvasData>({ lines: [], shapes: [] })
+
+  const handleCanvasChange = useCallback((data: CanvasData) => {
     // Debounce the auto-save
     if (autoSaveTimerRef.current) {
       clearTimeout(autoSaveTimerRef.current)
@@ -145,16 +165,36 @@ export default function EditCanvasPage({ params }: PageProps) {
       autoSave()
     }, 50)
 
-    // Broadcast the last line drawn in real-time
+    // Broadcast only what's NEW
     const socket = getSocket()
-    if (socket.connected && lines.length > 0) {
-      const lastLine = lines[lines.length - 1]
-      socket.emit('canvas-draw', {
-        canvasId: id,
-        line: lastLine
-      })
+    if (socket.connected) {
+      const prevData = previousDataRef.current
+      
+      // Check if a new line was added
+      if (data.lines.length > prevData.lines.length) {
+        const newLine = data.lines[data.lines.length - 1]
+        socket.emit('canvas-draw', {
+          canvasId: id,
+          type: 'line',
+          data: newLine
+        })
+      }
+      
+      // Check if a new shape was added
+      if (data.shapes && data.shapes.length > (prevData.shapes?.length || 0)) {
+        const newShape = data.shapes[data.shapes.length - 1]
+        socket.emit('canvas-draw', {
+          canvasId: id,
+          type: 'shape',
+          data: newShape
+        })
+      }
+      
+      // Update the reference for next comparison
+      previousDataRef.current = data
     }
   }, [autoSave, id])
+
 
   // Manual save - Sends both data and thumbnail
   const handleSave = async () => {
@@ -218,7 +258,7 @@ export default function EditCanvasPage({ params }: PageProps) {
 
   const initialData = isValidCanvasData(canvas.data) 
     ? canvas.data 
-    : { lines: [] }
+    : { lines: [], shapes: [] }
 
   return (
     <div className="h-screen flex flex-col bg-gray-900">

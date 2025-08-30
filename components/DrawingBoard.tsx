@@ -3,7 +3,7 @@
 import { useState, useRef, forwardRef, useImperativeHandle, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import Toolbar from './Toolbar'
-import { DrawingSettings, LineData } from '@/types/canvas'
+import { DrawingSettings, LineData, ShapeData, CanvasData } from '@/types/canvas'
 import type { CanvasRef } from './Canvas'
 
 const Canvas = dynamic(() => import('./Canvas'), {
@@ -24,14 +24,15 @@ const defaultSettings: DrawingSettings = {
 }
 
 interface DrawingBoardProps {
-  initialData?: { lines: LineData[] }
-  onLinesChange?: (lines: LineData[]) => void
+  initialData?: CanvasData
+  onLinesChange?: (data: CanvasData) => void
 }
 
 export interface DrawingBoardRef {
-  getCanvasData: () => { lines: LineData[] }
+  getCanvasData: () => CanvasData
   getThumbnail: () => string | null
-  addRemoteLine: (line: LineData) => void  // ADDED THIS
+  addRemoteLine: (line: LineData) => void
+  addRemoteShape: (shape: ShapeData) => void
 }
 
 const DrawingBoard = forwardRef<DrawingBoardRef, DrawingBoardProps>(({ initialData, onLinesChange }, ref) => {
@@ -57,18 +58,53 @@ const DrawingBoard = forwardRef<DrawingBoardRef, DrawingBoardProps>(({ initialDa
     localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings))
   }, [settings])
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      // Ignore if user is typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return
+      }
+
+      switch(e.key.toLowerCase()) {
+        case 'p':
+          setSettings(prev => ({ ...prev, tool: 'pen' }))
+          break
+        case 'e':
+          setSettings(prev => ({ ...prev, tool: 'eraser' }))
+          break
+        case 'r':
+          setSettings(prev => ({ ...prev, tool: 'rectangle' }))
+          break
+        case 'c':
+          setSettings(prev => ({ ...prev, tool: 'circle' }))
+          break
+        case 'a':
+          setSettings(prev => ({ ...prev, tool: 'arrow' }))
+          break
+        case 'l':
+          setSettings(prev => ({ ...prev, tool: 'line' }))
+          break
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyPress)
+    return () => window.removeEventListener('keydown', handleKeyPress)
+  }, [])
+
   const handleClearCanvas = () => {
     canvasRef.current?.clearCanvas()
   }
 
   // Expose methods to get canvas data AND thumbnail
   useImperativeHandle(ref, () => ({
-    getCanvasData: () => ({
-      lines: canvasRef.current?.getLines() || []
-    }),
+    getCanvasData: () => canvasRef.current?.getCanvasData() || { lines: [], shapes: [] },
     getThumbnail: () => canvasRef.current?.getThumbnail() || null,
-    addRemoteLine: (line: LineData) => {  // ADDED THIS METHOD
+    addRemoteLine: (line: LineData) => {
       canvasRef.current?.addRemoteLine(line)
+    },
+    addRemoteShape: (shape: ShapeData) => {
+      canvasRef.current?.addRemoteShape(shape)
     }
   }), [])
 
