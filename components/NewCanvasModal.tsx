@@ -49,6 +49,7 @@ export default function NewCanvasModal({ isOpen, onClose }: NewCanvasModalProps)
       if (response.ok) {
         const { canvas } = await response.json()
         onClose()
+        router.refresh() 
         router.push(`/canvas/${canvas.id}`)
       } else {
         const data = await response.json()

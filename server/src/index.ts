@@ -137,6 +137,17 @@ io.on('connection', (socket) => {
     })
   })
   
+  // Handle canvas deletion broadcast - FIXED: Using io.to() instead of socket.to()
+  socket.on('canvas-deleted', (canvasId: string) => {
+    console.log(`📢 Broadcasting delete for canvas:${canvasId}`);
+    
+    // Use io.to() to broadcast to EVERYONE in the room, including the sender
+    io.to(`canvas:${canvasId}`).emit('canvas-deleted', {
+      canvasId,
+      message: 'This canvas has been deleted by its owner'
+    });
+  });
+  
   // Handle disconnection
   socket.on('disconnect', () => {
     console.log(`❌ User disconnected: ${socket.id}`);

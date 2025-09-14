@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter, usePathname } from 'next/navigation'  // ADD usePathname
+import { useRouter, usePathname } from 'next/navigation'
 import ConfirmModal from './ConfirmModal'
+import { getSocket } from '@/lib/socket'
 
 interface DeleteCanvasButtonProps {
   canvasId: string
@@ -11,7 +12,7 @@ interface DeleteCanvasButtonProps {
 
 export default function DeleteCanvasButton({ canvasId, canvasName }: DeleteCanvasButtonProps) {
   const router = useRouter()
-  const pathname = usePathname()  // ADD THIS
+  const pathname = usePathname()
   const [isDeleting, setIsDeleting] = useState(false)
   const [showConfirmModal, setShowConfirmModal] = useState(false)
 
@@ -31,6 +32,12 @@ export default function DeleteCanvasButton({ canvasId, canvasName }: DeleteCanva
       })
 
       if (response.ok) {
+        // Notify other users via socket
+        const socket = getSocket()
+        if (socket.connected) {
+          socket.emit('canvas-deleted', canvasId)
+        }
+        
         // If we're on the canvas page we're deleting, redirect to dashboard
         if (pathname === `/canvas/${canvasId}`) {
           router.push('/dashboard')

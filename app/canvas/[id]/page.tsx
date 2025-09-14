@@ -9,6 +9,8 @@ import { LineData, ShapeData, CanvasData } from '@/types/canvas'
 import type { DrawingBoardRef } from '@/components/DrawingBoard'
 import DeleteCanvasButton from '@/components/DeleteCanvasButton'
 import { connectSocket, disconnectSocket, getSocket } from '@/lib/socket'
+import { motion } from 'framer-motion'
+import { ChevronLeft } from 'lucide-react'
 
 const DrawingBoard = dynamic(() => import('@/components/DrawingBoard'), {
   ssr: false,
@@ -27,12 +29,10 @@ function isValidCanvasData(data: unknown): data is CanvasData {
   if (typeof data !== 'object' || data === null) return false
   const obj = data as Record<string, unknown>
   
-  // Check if it has lines array
   if (!('lines' in obj) || !Array.isArray(obj.lines)) {
     return false
   }
   
-  // Shapes array is optional for backward compatibility
   if ('shapes' in obj && !Array.isArray(obj.shapes)) {
     return false
   }
@@ -51,6 +51,9 @@ export default function EditCanvasPage({ params }: PageProps) {
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
   const [onlineUsers, setOnlineUsers] = useState(0)
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null)
+  
+  // Track previous data to detect what's new
+  const previousDataRef = useRef<CanvasData>({ lines: [], shapes: [] })
 
   // Load canvas data
   useEffect(() => {
@@ -67,6 +70,11 @@ export default function EditCanvasPage({ params }: PageProps) {
 
         const data = await response.json()
         setCanvas(data.canvas)
+        
+        // INITIALIZE previousDataRef with loaded data
+        if (isValidCanvasData(data.canvas.data)) {
+          previousDataRef.current = data.canvas.data
+        }
       } catch (error) {
         setError(error instanceof Error ? error.message : 'Failed to load canvas')
       } finally {
@@ -101,21 +109,29 @@ export default function EditCanvasPage({ params }: PageProps) {
     
     socket.on('remote-draw', (data) => {
       console.log('🎨 Remote drawing received:', data)
+      
       if (data.type === 'line') {
         drawingBoardRef.current?.addRemoteLine(data.data)
       } else if (data.type === 'shape') {
         drawingBoardRef.current?.addRemoteShape(data.data)
       } else {
-        // Backward compatibility - assume it's a line
+        // Backward compatibility
         drawingBoardRef.current?.addRemoteLine(data.line)
       }
+    })
+    
+    // Listen for canvas deletion
+    socket.on('canvas-deleted', (data) => {
+      console.log('Canvas deleted:', data)
+      alert('This canvas has been deleted by another user')
+      router.push('/dashboard')
     })
     
     return () => {
       socket.emit('leave-canvas')
       disconnectSocket()
     }
-  }, [id])
+  }, [id, router])
 
   // Clean up timer on unmount
   useEffect(() => {
@@ -152,20 +168,26 @@ export default function EditCanvasPage({ params }: PageProps) {
     }
   }, [id])
 
-  // Debounced auto-save handler AND drawing broadcaster
-  // Track previous data to detect what's new
-  const previousDataRef = useRef<CanvasData>({ lines: [], shapes: [] })
-
-  const handleCanvasChange = useCallback((data: CanvasData) => {
+  const handleCanvasChange = useCallback((data: CanvasData & { isUndoRedo?: boolean }) => {
     // Debounce the auto-save
     if (autoSaveTimerRef.current) {
       clearTimeout(autoSaveTimerRef.current)
     }
     autoSaveTimerRef.current = setTimeout(() => {
       autoSave()
-    }, 50)
-
-    // Broadcast only what's NEW
+    }, 500)
+  
+    // DON'T broadcast undo/redo - history should be local!
+    if (data.isUndoRedo) {
+      // Just update the reference, don't broadcast
+      previousDataRef.current = {
+        lines: data.lines,
+        shapes: data.shapes || []
+      }
+      return // EXIT HERE - don't sync undo/redo
+    }
+  
+    // Broadcast only new additions
     const socket = getSocket()
     if (socket.connected) {
       const prevData = previousDataRef.current
@@ -190,11 +212,13 @@ export default function EditCanvasPage({ params }: PageProps) {
         })
       }
       
-      // Update the reference for next comparison
-      previousDataRef.current = data
+      // Update the reference
+      previousDataRef.current = {
+        lines: data.lines,
+        shapes: data.shapes || []
+      }
     }
   }, [autoSave, id])
-
 
   // Manual save - Sends both data and thumbnail
   const handleSave = async () => {
@@ -237,18 +261,18 @@ export default function EditCanvasPage({ params }: PageProps) {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-900">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500"></div>
       </div>
     )
   }
 
   if (!canvas) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-900">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-white mb-4">Canvas Not Found</h1>
-          <Link href="/dashboard" className="text-blue-400 hover:text-blue-300">
+          <Link href="/dashboard" className="text-purple-400 hover:text-purple-300">
             Return to Dashboard
           </Link>
         </div>
@@ -261,77 +285,97 @@ export default function EditCanvasPage({ params }: PageProps) {
     : { lines: [], shapes: [] }
 
   return (
-    <div className="h-screen flex flex-col bg-gray-900">
-      {/* Simple Saving Indicator */}
+    <div className="h-screen flex flex-col bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+      {/* Animated background pattern */}
+      {/* Animated background pattern */}
+<div className="absolute inset-0 opacity-20" 
+  style={{
+    backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%239C92AC' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+    backgroundSize: '60px 60px'
+  }}
+/>
+      {/* Saving Indicator */}
       {isSaving && (
-        <div className="fixed top-20 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 flex items-center gap-3">
-          <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-          </svg>
-          <span>Saving canvas and generating thumbnail...</span>
-        </div>
+        <motion.div 
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="fixed top-20 left-1/2 transform -translate-x-1/2 bg-white/10 backdrop-blur-md text-white px-6 py-3 rounded-full shadow-lg z-50 flex items-center gap-3 border border-white/20"
+        >
+          <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+          <span className="text-sm font-medium">Saving...</span>
+        </motion.div>
       )}
       
       {/* Header */}
-      <div className="bg-gray-800 border-b border-gray-700 px-4 py-3">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
+      <div className="relative z-40 px-6 py-4">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link
               href="/dashboard"
-              className={`text-gray-400 hover:text-white transition-colors ${
-                isSaving ? 'pointer-events-none opacity-50 cursor-not-allowed' : ''
-              }`}
-            >
-              ← Back
+              className={`text-white/60 hover:text-white transition-colors flex items-center gap-2 ${
+                isSaving ? 'pointer-events-none opacity-50' : ''
+              }`}>
+              <ChevronLeft className="w-5 h-5" />
+              <span>Back</span>
             </Link>
-            <h1 className="text-lg font-semibold text-white">{canvas.name}</h1>
+            <h1 className="text-xl font-semibold text-white">{canvas.name}</h1>
             {lastSaved && (
-              <span className="text-sm text-gray-500">
-                Last saved: {lastSaved.toLocaleTimeString()}
+              <span className="text-sm text-white/40">
+                Saved {lastSaved.toLocaleTimeString()}
               </span>
             )}
             {onlineUsers > 1 && (
-              <div className="flex items-center gap-2 px-3 py-1 bg-green-500/20 rounded-full">
-                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                <span className="text-green-400 text-sm font-medium">
-                  {onlineUsers} users online
+              <div className="flex items-center gap-2 px-3 py-1 bg-green-500/20 rounded-full backdrop-blur-sm border border-green-500/30">
+                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                <span className="text-green-300 text-sm font-medium">
+                  {onlineUsers} online
                 </span>
               </div>
             )}
           </div>
+          
           <div className="flex items-center gap-3">
-            <div className={isSaving ? 'pointer-events-none opacity-50' : ''}>
-              <DeleteCanvasButton 
-                canvasId={canvas.id} 
-                canvasName={canvas.name}
-              />
-            </div>
-            <button
+            <DeleteCanvasButton 
+              canvasId={canvas.id} 
+              canvasName={canvas.name}
+            />
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
               onClick={handleSave}
               disabled={isSaving}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-5 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl font-medium shadow-lg shadow-green-500/25 hover:shadow-green-500/40 transition-all disabled:opacity-50"
             >
-              {isSaving ? 'Saving...' : 'Save Changes'}
-            </button>
+              Save
+            </motion.button>
           </div>
         </div>
       </div>
 
-      {/* Error/Success Message */}
+      {/* Error Message */}
       {error && (
-        <div className="bg-red-900/50 border border-red-700 text-red-200 px-4 py-3 mx-4 mt-4 rounded-lg">
+        <motion.div 
+          initial={{ opacity: 0, x: 100 }}
+          animate={{ opacity: 1, x: 0 }}
+          className="fixed top-20 right-6 bg-red-500/20 backdrop-blur-md border border-red-500/30 text-red-300 px-4 py-3 rounded-xl"
+        >
           {error}
-        </div>
+        </motion.div>
       )}
 
-      {/* Drawing Board */}
-      <div className="flex-1 overflow-hidden">
-        <DrawingBoard 
-          ref={drawingBoardRef} 
-          initialData={initialData}
-          onLinesChange={handleCanvasChange}
-        />
+      {/* Canvas Area */}
+      <div className="flex-1 relative overflow-hidden p-6">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="w-full h-full bg-white rounded-2xl shadow-2xl overflow-hidden"
+        >
+          <DrawingBoard 
+            ref={drawingBoardRef} 
+            initialData={initialData}
+            onLinesChange={handleCanvasChange}
+          />
+        </motion.div>
       </div>
     </div>
   )

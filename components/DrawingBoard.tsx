@@ -33,6 +33,7 @@ export interface DrawingBoardRef {
   getThumbnail: () => string | null
   addRemoteLine: (line: LineData) => void
   addRemoteShape: (shape: ShapeData) => void
+  replaceState: (data: CanvasData) => void 
 }
 
 const DrawingBoard = forwardRef<DrawingBoardRef, DrawingBoardProps>(({ initialData, onLinesChange }, ref) => {
@@ -66,6 +67,21 @@ const DrawingBoard = forwardRef<DrawingBoardRef, DrawingBoardProps>(({ initialDa
         return
       }
 
+      // Handle Ctrl+Z for Undo and Ctrl+Y for Redo
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key === 'z' && !e.shiftKey) {
+          e.preventDefault()
+          handleUndo()
+          return
+        }
+        if (e.key === 'y' || (e.key === 'z' && e.shiftKey)) {
+          e.preventDefault()
+          handleRedo()
+          return
+        }
+      }
+
+      // Tool shortcuts
       switch(e.key.toLowerCase()) {
         case 'p':
           setSettings(prev => ({ ...prev, tool: 'pen' }))
@@ -96,17 +112,30 @@ const DrawingBoard = forwardRef<DrawingBoardRef, DrawingBoardProps>(({ initialDa
     canvasRef.current?.clearCanvas()
   }
 
+  // ADD THESE TWO NEW FUNCTIONS
+  const handleUndo = () => {
+    canvasRef.current?.undo()
+  }
+
+  const handleRedo = () => {
+    canvasRef.current?.redo()
+  }
+
   // Expose methods to get canvas data AND thumbnail
-  useImperativeHandle(ref, () => ({
-    getCanvasData: () => canvasRef.current?.getCanvasData() || { lines: [], shapes: [] },
-    getThumbnail: () => canvasRef.current?.getThumbnail() || null,
-    addRemoteLine: (line: LineData) => {
-      canvasRef.current?.addRemoteLine(line)
-    },
-    addRemoteShape: (shape: ShapeData) => {
-      canvasRef.current?.addRemoteShape(shape)
-    }
-  }), [])
+  // Expose methods to get canvas data AND thumbnail
+useImperativeHandle(ref, () => ({
+  getCanvasData: () => canvasRef.current?.getCanvasData() || { lines: [], shapes: [] },
+  getThumbnail: () => canvasRef.current?.getThumbnail() || null,
+  addRemoteLine: (line: LineData) => {
+    canvasRef.current?.addRemoteLine(line)
+  },
+  addRemoteShape: (shape: ShapeData) => {
+    canvasRef.current?.addRemoteShape(shape)
+  },
+  replaceState: (data: CanvasData) => {  // ADD THIS METHOD
+    canvasRef.current?.replaceState(data)
+  }
+}), [])
 
   return (
     <div className="flex flex-col h-full">
@@ -114,6 +143,8 @@ const DrawingBoard = forwardRef<DrawingBoardRef, DrawingBoardProps>(({ initialDa
         settings={settings}
         onSettingsChange={setSettings}
         onClearCanvas={handleClearCanvas}
+        onUndo={handleUndo}  // ADD THIS
+        onRedo={handleRedo}  // ADD THIS
       />
       <div className="flex-1">
         <Canvas 

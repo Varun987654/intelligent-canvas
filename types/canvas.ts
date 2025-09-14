@@ -5,6 +5,8 @@ export interface DrawingSettings {
 }
 
 export interface LineData {
+  id?: string  // Add unique ID
+  userId?: string  // Track who drew it
   points: number[]
   color: string
   strokeWidth: number
@@ -12,11 +14,13 @@ export interface LineData {
 }
 
 export interface ShapeData {
+  id?: string  // Add unique ID
+  userId?: string  // Track who drew it
   type: 'rectangle' | 'circle' | 'arrow' | 'line'
-  points: number[] // [x1, y1, x2, y2] for all shapes
+  points: number[]
   color: string
   strokeWidth: number
-  fill?: string // Optional fill color
+  fill?: string
 }
 
 export interface CanvasData {
@@ -24,7 +28,6 @@ export interface CanvasData {
   shapes: ShapeData[]
 }
 
-// Add this new interface
 export interface HistoryState {
   data: CanvasData
   timestamp: number

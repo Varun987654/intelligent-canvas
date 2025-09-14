@@ -20,6 +20,7 @@ export interface CanvasRef {
   addRemoteShape: (shape: ShapeData) => void
   undo: () => void
   redo: () => void
+  replaceState: (data: CanvasData) => void
 }
 
 const Canvas = forwardRef<CanvasRef, CanvasProps>(({ settings, onLinesChange, initialData }, ref) => {
@@ -28,9 +29,16 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(({ settings, onLinesChange, in
   const [isDrawing, setIsDrawing] = useState(false)
   const [currentShapePreview, setCurrentShapePreview] = useState<ShapeData | null>(null)
   
-  // Add these for undo/redo
-  const [history, setHistory] = useState<HistoryState[]>([])
-  const [historyIndex, setHistoryIndex] = useState(-1)
+
+  // Combined history state to avoid stale closures
+  const [historyState, setHistoryState] = useState<{
+    history: HistoryState[]
+    index: number
+  }>({
+    history: [],
+    index: -1
+  })
+  
   const isUndoRedoRef = useRef(false)
   
   const containerRef = useRef<HTMLDivElement>(null)
@@ -43,31 +51,71 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(({ settings, onLinesChange, in
   const currentLineRef = useRef<Konva.Line | null>(null)
   const drawStartPoint = useRef<{ x: number; y: number } | null>(null)
 
+  // Initialize history with the initial state
+  useEffect(() => {
+    const initialState: HistoryState = {
+      data: { 
+        lines: initialData?.lines || [], 
+        shapes: initialData?.shapes || [] 
+      },
+      timestamp: Date.now()
+    }
+    setHistoryState({
+      history: [initialState],
+      index: 0
+    })
+  }, []) // Run only once on mount
+
   // Save current state to history
   const saveToHistory = (newLines: LineData[], newShapes: ShapeData[]) => {
-    if (isUndoRedoRef.current) return // Don't save history during undo/redo
-    
     const newState: HistoryState = {
       data: { lines: newLines, shapes: newShapes },
       timestamp: Date.now()
     }
-    
-    // Remove any states after current index (for redo consistency)
-    const newHistory = history.slice(0, historyIndex + 1)
-    newHistory.push(newState)
-    
-    // Keep only last 50 states to prevent memory issues
-    if (newHistory.length > 50) {
-      newHistory.shift()
+
+    setHistoryState(prev => {
+      const validHistory = prev.history.slice(0, prev.index + 1)
+      const newHistory = [...validHistory, newState]
+      
+      if (newHistory.length > 50) {
+        newHistory.shift()
+        return {
+          history: newHistory,
+          index: newHistory.length - 1
+        }
+      }
+      
+      return {
+        history: newHistory,
+        index: newHistory.length - 1
+      }
+    })
+  }
+
+  // This effect runs whenever lines or shapes change, handling LOCAL side effects.
+  useEffect(() => {
+    // This is the crucial guard. If the change was from an undo/redo or a remote
+    // action, isUndoRedoRef will be true, and we should not save a new history state.
+    if (isUndoRedoRef.current) {
+      isUndoRedoRef.current = false; // Reset the flag
+      return;
+    }
+
+    // Don't save on the very first render.
+    if (historyState.index === -1 && lines.length === 0 && shapes.length === 0) {
+      return;
     }
     
-    setHistory(newHistory)
-    setHistoryIndex(newHistory.length - 1)
-  }
+    // The state is guaranteed to be fresh here.
+    saveToHistory(lines, shapes);
+    onLinesChange?.({ lines, shapes });
+
+  }, [lines, shapes]); // Dependency array ensures this runs when state is updated
 
   // Initialize with saved data
   useEffect(() => {
     if (initialData) {
+      isUndoRedoRef.current = true; // Prevent saving initial data to history
       if (initialData.lines && initialData.lines.length > 0) {
         setLines(initialData.lines)
       }
@@ -120,6 +168,7 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(({ settings, onLinesChange, in
   // Expose methods to parent via ref
   useImperativeHandle(ref, () => ({
     clearCanvas: () => {
+      isUndoRedoRef.current = false; // This is a local action, save to history
       setLines([])
       setShapes([])
       layerRef.current?.destroyChildren()
@@ -142,34 +191,39 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(({ settings, onLinesChange, in
       }
     },
     addRemoteLine: (line: LineData) => {
+      isUndoRedoRef.current = true; // Remote action, don't save to history
       setLines(prevLines => [...prevLines, line])
     },
     addRemoteShape: (shape: ShapeData) => {
+      isUndoRedoRef.current = true; // Remote action, don't save to history
       setShapes(prevShapes => [...prevShapes, shape])
     },
+    replaceState: (data: CanvasData) => {
+      isUndoRedoRef.current = true; // Set flag to prevent new history entry
+      setLines(data.lines || [])
+      setShapes(data.shapes || [])
+    },
     undo: () => {
-      if (historyIndex > 0) {
-        isUndoRedoRef.current = true
-        const prevState = history[historyIndex - 1]
+      if (historyState.index > 0) {
+        isUndoRedoRef.current = true; // Set flag to prevent new history entry
+        const prevState = historyState.history[historyState.index - 1]
         setLines(prevState.data.lines)
-        setShapes(prevState.data.shapes)
-        setHistoryIndex(historyIndex - 1)
-        isUndoRedoRef.current = false
-        onLinesChange?.(prevState.data)
+        setShapes(prevState.data.shapes || [])
+        setHistoryState(prev => ({ ...prev, index: prev.index - 1 }))
+        onLinesChange?.({ ...prevState.data, isUndoRedo: true } as any)
       }
     },
     redo: () => {
-      if (historyIndex < history.length - 1) {
-        isUndoRedoRef.current = true
-        const nextState = history[historyIndex + 1]
+      if (historyState.index < historyState.history.length - 1) {
+        isUndoRedoRef.current = true; // Set flag to prevent new history entry
+        const nextState = historyState.history[historyState.index + 1]
         setLines(nextState.data.lines)
-        setShapes(nextState.data.shapes)
-        setHistoryIndex(historyIndex + 1)
-        isUndoRedoRef.current = false
-        onLinesChange?.(nextState.data)
+        setShapes(nextState.data.shapes || [])
+        setHistoryState(prev => ({ ...prev, index: prev.index + 1 }))
+        onLinesChange?.({ ...nextState.data, isUndoRedo: true } as any)
       }
     }
-  }), [lines, shapes, history, historyIndex])
+  }), [lines, shapes, historyState, onLinesChange])
 
   const startDrawing = (e: KonvaEventObject<MouseEvent | TouchEvent>) => {
     // Only draw on left mouse button (button = 0)
@@ -228,39 +282,40 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(({ settings, onLinesChange, in
   }
 
   const finishDrawing = () => {
-    if (!isDrawingRef.current) return
-
-    isDrawingRef.current = false
-    setIsDrawing(false)
-
+    if (!isDrawingRef.current) return;
+  
+    isDrawingRef.current = false;
+    setIsDrawing(false);
+  
+    // This flag will tell our useEffect that this state change was local
+    isUndoRedoRef.current = false;
+  
     // Handle pen/eraser
     if ((settings.tool === 'pen' || settings.tool === 'eraser') && currentLineRef.current) {
-      const points = currentLineRef.current.points()
-      const strokeColor = currentLineRef.current.stroke()
-      const newLine: LineData = {
-        points,
-        color: typeof strokeColor === 'string' ? strokeColor : '#000000',
-        strokeWidth: currentLineRef.current.strokeWidth(),
-        tool: currentLineRef.current.globalCompositeOperation() === 'destination-out' ? 'eraser' : 'pen'
+      const points = currentLineRef.current.points();
+      if (points.length > 2) {
+        const strokeValue = currentLineRef.current.stroke();
+        const newLine: LineData = {
+          points,
+          color: typeof strokeValue === 'string' ? strokeValue : '#000000',  // FIX HERE
+          strokeWidth: currentLineRef.current.strokeWidth(),
+          tool: currentLineRef.current.globalCompositeOperation() === 'destination-out' ? 'eraser' : 'pen'
+        };
+        // Just update the lines state. The useEffect will handle all side effects.
+        setLines(prevLines => [...prevLines, newLine]);
       }
-
-      const updatedLines = [...lines, newLine]
-      setLines(updatedLines)
-      saveToHistory(updatedLines, shapes)
-      onLinesChange?.({ lines: updatedLines, shapes })
-      currentLineRef.current = null
+      currentLineRef.current.destroy();
+      currentLineRef.current = null;
     }
     // Handle shapes
     else if (currentShapePreview) {
-      const updatedShapes = [...shapes, currentShapePreview]
-      setShapes(updatedShapes)
-      saveToHistory(lines, updatedShapes)
-      onLinesChange?.({ lines, shapes: updatedShapes })
-      setCurrentShapePreview(null)
+      // Just update the shapes state. The useEffect will handle all side effects.
+      setShapes(prevShapes => [...prevShapes, currentShapePreview]);
+      setCurrentShapePreview(null);
     }
-
-    drawStartPoint.current = null
-  }
+  
+    drawStartPoint.current = null;
+  };
 
   // Render shape based on type
   const renderShape = (shape: ShapeData, index: number) => {
