@@ -67,15 +67,41 @@ io.on('connection', (socket) => {
         }
       }
     }
+    
     socket.join(`canvas:${canvasId}`);
     currentCanvas = canvasId;
+    
     if (!canvasUsers.has(canvasId)) canvasUsers.set(canvasId, new Set());
     canvasUsers.get(canvasId)!.add(socket.id);
+    
     if (!canvasState.has(canvasId)) {
-      // TODO: Load the last saved state from the database here
-      const initialCanvasData: CanvasData = { lines: [], shapes: [], texts: [] };
-      canvasState.set(canvasId, { history: [initialCanvasData], currentIndex: 0 });
+      // Load the saved state from database
+      let initialCanvasData: CanvasData = { lines: [], shapes: [], texts: [] };
+      
+      try {
+        const response = await fetch(`${process.env.NEXTJS_URL || 'http://localhost:3000'}/api/canvas/${canvasId}/data`);
+        if (response.ok) {
+          const result = await response.json() as { data: CanvasData };
+          if (result.data && typeof result.data === 'object') {
+            // Ensure the data has the correct structure
+            initialCanvasData = {
+              lines: Array.isArray(result.data.lines) ? result.data.lines : [],
+              shapes: Array.isArray(result.data.shapes) ? result.data.shapes : [],
+              texts: Array.isArray(result.data.texts) ? result.data.texts : []
+            };
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load canvas data:', error);
+        // Use empty canvas data on error
+      }
+      
+      canvasState.set(canvasId, { 
+        history: [initialCanvasData], 
+        currentIndex: 0 
+      });
     }
+    
     const roomState = canvasState.get(canvasId)!;
     const currentState = roomState.history[roomState.currentIndex];
     socket.emit('server-state-update', {
@@ -83,8 +109,12 @@ io.on('connection', (socket) => {
       canUndo: roomState.currentIndex > 0,
       canRedo: roomState.currentIndex < roomState.history.length - 1,
     });
-    io.to(`canvas:${canvasId}`).emit('canvas-users', { users: Array.from(canvasUsers.get(canvasId) || []) });
-  });
+    
+    io.to(`canvas:${canvasId}`).emit('canvas-users', { 
+      users: Array.from(canvasUsers.get(canvasId) || []) 
+    });
+});
+
 
   const handleEdit = (canvasId: string, editFunction: (currentData: CanvasData) => CanvasData) => {
     const roomState = canvasState.get(canvasId);

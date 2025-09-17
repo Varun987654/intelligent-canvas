@@ -59,7 +59,7 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(({ settings, data, onCursorMov
       if (points.length > 2) {
         const strokeValue = currentLineRef.current.stroke()
         const newLine: LineData = {
-          tempId: `temp-${Date.now()}`,
+          tempId: `temp-${Date.now()}-${Math.random()}`, // More unique tempId
           points,
           color: typeof strokeValue === 'string' ? strokeValue : '#000000',
           strokeWidth: currentLineRef.current.strokeWidth(),
@@ -70,17 +70,17 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(({ settings, data, onCursorMov
       }
       currentLineRef.current.destroy()
       currentLineRef.current = null
-    } else if (currentShapePreview) {
+    } else if (currentShapePreview && drawStartPoint.current) { // Check drawStartPoint exists
       const shapeWithTempId: ShapeData = {
         ...currentShapePreview,
-        tempId: `temp-${Date.now()}`,
+        tempId: `temp-${Date.now()}-${Math.random()}`, // More unique tempId
         createdAt: Date.now(),
       }
       onDrawEnd?.({ type: 'shape', data: shapeWithTempId });
-      setCurrentShapePreview(null)
+      setCurrentShapePreview(null) // Clear preview AFTER sending
     }
     drawStartPoint.current = null
-  }, [settings.tool, onDrawEnd, settings.color, settings.strokeWidth]);
+}, [settings.tool, currentShapePreview, onDrawEnd]);
 
   useEffect(() => {
     const handleGlobalMouseUp = () => { if (isDrawingRef.current) finishDrawing() }
@@ -216,11 +216,69 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(({ settings, data, onCursorMov
         const width = x2 - x1;
         const height = y2 - y1;
         switch (element.type) {
-            case 'rectangle': return <Rect key={key} x={Math.min(x1, x2)} y={Math.min(y1, y2)} width={Math.abs(width)} height={Math.abs(height)} stroke={element.color} strokeWidth={element.strokeWidth} fill={element.fill || 'transparent'} onClick={handleDeleteClick} onTap={handleDeleteClick} />;
-            case 'circle': const radius = Math.sqrt(width * width + height * height) / 2; return <Circle key={key} x={(x1 + x2) / 2} y={(y1 + y2) / 2} radius={radius} stroke={element.color} strokeWidth={element.strokeWidth} fill={element.fill || 'transparent'} onClick={handleDeleteClick} onTap={handleDeleteClick} />;
-            case 'arrow': return <Arrow key={key} points={element.points} stroke={element.color} strokeWidth={element.strokeWidth} fill={element.color} pointerLength={10} pointerWidth={10} onClick={handleDeleteClick} onTap={handleDeleteClick} />;
-            case 'line': return <Line key={key} points={element.points} stroke={element.color} strokeWidth={element.strokeWidth} lineCap="round" onClick={handleDeleteClick} onTap={handleDeleteClick} />;
-        }
+          case 'rectangle': 
+              return (
+                  <Rect 
+                      key={key} 
+                      x={Math.min(x1, x2)} 
+                      y={Math.min(y1, y2)} 
+                      width={Math.abs(width)} 
+                      height={Math.abs(height)} 
+                      stroke={element.color} 
+                      strokeWidth={element.strokeWidth} 
+                      fillEnabled={false} // THE FIX
+                      hitStrokeWidth={20}
+                      onClick={handleDeleteClick} 
+                      onTap={handleDeleteClick} 
+                  />
+              );
+              
+          case 'circle': 
+              const radius = Math.sqrt(width * width + height * height) / 2; 
+              return (
+                  <Circle 
+                      key={key} 
+                      x={(x1 + x2) / 2} 
+                      y={(y1 + y2) / 2} 
+                      radius={radius} 
+                      stroke={element.color} 
+                      strokeWidth={element.strokeWidth} 
+                      fillEnabled={false} // THE FIX
+                      hitStrokeWidth={20}
+                      onClick={handleDeleteClick} 
+                      onTap={handleDeleteClick} 
+                  />
+              );
+              
+          case 'arrow': 
+              return (
+                  <Arrow 
+                      key={key} 
+                      points={element.points} 
+                      stroke={element.color} 
+                      strokeWidth={element.strokeWidth} 
+                      fill={element.color} 
+                      pointerLength={10} 
+                      pointerWidth={10} 
+                      onClick={handleDeleteClick} 
+                      onTap={handleDeleteClick} 
+                  />
+              );
+              
+          case 'line': 
+              return (
+                  <Line 
+                      key={key} 
+                      points={element.points} 
+                      stroke={element.color} 
+                      strokeWidth={element.strokeWidth} 
+                      lineCap="round" 
+                      hitStrokeWidth={element.strokeWidth + 10} // Add hit area padding
+                      onClick={handleDeleteClick} 
+                      onTap={handleDeleteClick} 
+                  />
+              );
+      }
     }
     return null;
   };
@@ -235,16 +293,56 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(({ settings, data, onCursorMov
             {sortedElements.map((element, i) => renderElement(element, i))}
             
             {currentShapePreview && (() => {
-                const [x1, y1, x2, y2] = currentShapePreview.points;
-                const width = x2 - x1;
-                const height = y2 - y1;
-                switch (currentShapePreview.type) {
-                    case 'rectangle': return <Rect x={Math.min(x1, x2)} y={Math.min(y1, y2)} width={Math.abs(width)} height={Math.abs(height)} stroke={currentShapePreview.color} strokeWidth={currentShapePreview.strokeWidth} />;
-                    case 'circle': const radius = Math.sqrt(width*width + height*height)/2; return <Circle x={(x1+x2)/2} y={(y1+y2)/2} radius={radius} stroke={currentShapePreview.color} strokeWidth={currentShapePreview.strokeWidth}/>;
-                    case 'arrow': return <Arrow points={currentShapePreview.points} stroke={currentShapePreview.color} strokeWidth={currentShapePreview.strokeWidth} fill={currentShapePreview.color} pointerLength={10} pointerWidth={10}/>;
-                    case 'line': return <Line points={currentShapePreview.points} stroke={currentShapePreview.color} strokeWidth={currentShapePreview.strokeWidth} lineCap="round"/>;
-                }
-            })()}
+    const [x1, y1, x2, y2] = currentShapePreview.points;
+    const width = x2 - x1;
+    const height = y2 - y1;
+    switch (currentShapePreview.type) {
+        case 'rectangle': 
+            return (
+                <Rect 
+                    x={Math.min(x1, x2)} 
+                    y={Math.min(y1, y2)} 
+                    width={Math.abs(width)} 
+                    height={Math.abs(height)} 
+                    stroke={currentShapePreview.color} 
+                    strokeWidth={currentShapePreview.strokeWidth}
+                    fillEnabled={false}
+                />
+            );
+        case 'circle': 
+            const radius = Math.sqrt(width*width + height*height)/2; 
+            return (
+                <Circle 
+                    x={(x1+x2)/2} 
+                    y={(y1+y2)/2} 
+                    radius={radius} 
+                    stroke={currentShapePreview.color} 
+                    strokeWidth={currentShapePreview.strokeWidth}
+                    fillEnabled={false}
+                />
+            );
+        case 'arrow': 
+            return (
+                <Arrow 
+                    points={currentShapePreview.points} 
+                    stroke={currentShapePreview.color} 
+                    strokeWidth={currentShapePreview.strokeWidth} 
+                    fill={currentShapePreview.color} 
+                    pointerLength={10} 
+                    pointerWidth={10}
+                />
+            );
+        case 'line': 
+            return (
+                <Line 
+                    points={currentShapePreview.points} 
+                    stroke={currentShapePreview.color} 
+                    strokeWidth={currentShapePreview.strokeWidth} 
+                    lineCap="round"
+                />
+            );
+    }
+})()}
           </Layer>
         </Stage>
       )}
