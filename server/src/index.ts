@@ -3,177 +3,165 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import { v4 as uuid } from 'uuid';
 
-// Load environment variables
 dotenv.config();
 
-// Create Express app
 const app = express();
-app.use(cors());
-app.use(express.json());
-
-// Create HTTP server
 const httpServer = createServer(app);
-
-// Create Socket.io server
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.CLIENT_URL || "http://localhost:3000",
+    origin: process.env.CLIENT_URL || "*",
     methods: ["GET", "POST"],
-    credentials: true
   },
-  // Good for production - prevents memory leaks
-  pingTimeout: 60000,
-  pingInterval: 25000
 });
 
 const PORT = process.env.PORT || 3001;
 
-// Health check endpoint (useful for monitoring)
-app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
-    connections: io.engine.clientsCount,
-    timestamp: new Date().toISOString()
-  });
-});
+// --- TYPE DEFINITIONS ---
+interface BaseElement { id: string; tempId?: string; userId: string; createdAt: number; }
+interface LineData extends BaseElement { points: number[]; color: string; strokeWidth: number; tool: 'pen' | 'eraser'; }
+interface ShapeData extends BaseElement { type: 'rectangle' | 'circle' | 'arrow' | 'line'; points: number[]; color: string; strokeWidth: number; fill?: string; }
+interface TextData extends BaseElement { x: number; y: number; text: string; fontSize: number; fontFamily: string; color: string; }
 
-// Store active users per canvas
+interface CanvasData {
+  lines: LineData[];
+  shapes: ShapeData[];
+  texts: TextData[];
+}
+
+// --- NEW STATE STRUCTURE FOR SHARED HISTORY ---
+interface RoomState {
+  history: CanvasData[];
+  currentIndex: number;
+}
+const canvasState = new Map<string, RoomState>();
 const canvasUsers = new Map<string, Set<string>>();
 
-// Socket.io connection handling
+// --- HELPER FUNCTION TO GET CURRENT STATE AND BROADCAST ---
+const updateAndBroadcast = (canvasId: string, roomState: RoomState) => {
+  const currentState = roomState.history[roomState.currentIndex];
+  io.to(`canvas:${canvasId}`).emit('server-state-update', {
+    elements: currentState,
+    canUndo: roomState.currentIndex > 0,
+    canRedo: roomState.currentIndex < roomState.history.length - 1,
+  });
+};
+
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', connections: io.engine.clientsCount, activeCanvases: canvasState.size });
+});
+
 io.on('connection', (socket) => {
-  console.log(`✅ User connected: ${socket.id}`);
-  
-  // Track which canvas this user is currently in
   let currentCanvas: string | null = null;
   
-  // Join a canvas room
-  socket.on('join-canvas', (canvasId: string) => {
-    // Leave previous canvas if any
+  socket.on('join-canvas', async (canvasId: string) => {
     if (currentCanvas) {
       socket.leave(`canvas:${currentCanvas}`);
-      
       const users = canvasUsers.get(currentCanvas);
       if (users) {
         users.delete(socket.id);
         if (users.size === 0) {
           canvasUsers.delete(currentCanvas);
+          canvasState.delete(currentCanvas);
         }
       }
-      
-      // Notify everyone in old room with updated count
-      io.to(`canvas:${currentCanvas}`).emit('canvas-users', {
-        users: Array.from(canvasUsers.get(currentCanvas) || []),
-        canvasId: currentCanvas
-      });
     }
-    
-    // Join new canvas
     socket.join(`canvas:${canvasId}`);
     currentCanvas = canvasId;
-    
-    // Add to user tracking
-    if (!canvasUsers.has(canvasId)) {
-      canvasUsers.set(canvasId, new Set());
-    }
+    if (!canvasUsers.has(canvasId)) canvasUsers.set(canvasId, new Set());
     canvasUsers.get(canvasId)!.add(socket.id);
-    
-    console.log(`👤 User ${socket.id} joined canvas:${canvasId}`);
-    console.log(`   Total users in canvas: ${canvasUsers.get(canvasId)!.size}`);
-    
-    // Broadcast updated user list to EVERYONE in the room (including new user)
-    io.to(`canvas:${canvasId}`).emit('canvas-users', {
-      users: Array.from(canvasUsers.get(canvasId) || []),
-      canvasId: canvasId
+    if (!canvasState.has(canvasId)) {
+      // TODO: Load the last saved state from the database here
+      const initialCanvasData: CanvasData = { lines: [], shapes: [], texts: [] };
+      canvasState.set(canvasId, { history: [initialCanvasData], currentIndex: 0 });
+    }
+    const roomState = canvasState.get(canvasId)!;
+    const currentState = roomState.history[roomState.currentIndex];
+    socket.emit('server-state-update', {
+      elements: currentState,
+      canUndo: roomState.currentIndex > 0,
+      canRedo: roomState.currentIndex < roomState.history.length - 1,
+    });
+    io.to(`canvas:${canvasId}`).emit('canvas-users', { users: Array.from(canvasUsers.get(canvasId) || []) });
+  });
+
+  const handleEdit = (canvasId: string, editFunction: (currentData: CanvasData) => CanvasData) => {
+    const roomState = canvasState.get(canvasId);
+    if (!roomState) return;
+    const currentData = roomState.history[roomState.currentIndex];
+    const newCanvasData = JSON.parse(JSON.stringify(currentData)); 
+    const updatedData = editFunction(newCanvasData);
+    const newHistory = roomState.history.slice(0, roomState.currentIndex + 1);
+    newHistory.push(updatedData);
+    roomState.history = newHistory;
+    roomState.currentIndex = newHistory.length - 1;
+    updateAndBroadcast(canvasId, roomState);
+  };
+
+  socket.on('client-create-element', (data: { canvasId: string; type: string; elementData: any }) => {
+    handleEdit(data.canvasId, (currentData) => {
+      const element = {
+        ...data.elementData,
+        id: `${data.type}-${uuid()}`,
+        userId: socket.id,
+      };
+
+      if (data.type === 'line') currentData.lines.push(element as LineData);
+      else if (data.type === 'shape') currentData.shapes.push(element as ShapeData);
+      else if (data.type === 'text') currentData.texts.push(element as TextData);
+      return currentData;
     });
   });
   
-  // Leave canvas room
-  socket.on('leave-canvas', () => {
-    if (currentCanvas) {
-      socket.leave(`canvas:${currentCanvas}`);
-      
-      const users = canvasUsers.get(currentCanvas);
-      if (users) {
-        users.delete(socket.id);
-        if (users.size === 0) {
-          canvasUsers.delete(currentCanvas);
-        }
-      }
-      
-      console.log(`👤 User ${socket.id} left canvas:${currentCanvas}`);
-      
-      // Broadcast updated user count to remaining users
-      io.to(`canvas:${currentCanvas}`).emit('canvas-users', {
-        users: Array.from(canvasUsers.get(currentCanvas) || []),
-        canvasId: currentCanvas
-      });
-      
-      currentCanvas = null;
-    }
-  });
-  
-  // Test echo (for initial testing)
-  socket.on('test-echo', (data) => {
-    console.log('📨 Test echo received:', data);
-    socket.emit('test-response', {
-      ...data,
-      serverTime: new Date().toISOString()
+  socket.on('client-delete-element', (data) => {
+    handleEdit(data.canvasId, (currentData) => {
+      currentData.lines = currentData.lines.filter(l => l.id !== data.elementId);
+      currentData.shapes = currentData.shapes.filter(s => s.id !== data.elementId);
+      currentData.texts = currentData.texts.filter(t => t.id !== data.elementId);
+      return currentData;
     });
   });
 
-  // Handle drawing events
-  socket.on('canvas-draw', (data: { canvasId: string; type?: string; data?: any; line?: any }) => {
-    console.log(`🎨 Drawing received for canvas:${data.canvasId}, type:${data.type || 'line'}`)
-    
-    // Broadcast to everyone in the room EXCEPT the sender
-    socket.to(`canvas:${data.canvasId}`).emit('remote-draw', {
-      userId: socket.id,
-      type: data.type || 'line',
-      data: data.data,
-      line: data.line, // backward compatibility
-      timestamp: new Date().toISOString()
-    })
-  })
-  
-  // Handle canvas deletion broadcast - FIXED: Using io.to() instead of socket.to()
-  socket.on('canvas-deleted', (canvasId: string) => {
-    console.log(`📢 Broadcasting delete for canvas:${canvasId}`);
-    
-    // Use io.to() to broadcast to EVERYONE in the room, including the sender
-    io.to(`canvas:${canvasId}`).emit('canvas-deleted', {
-      canvasId,
-      message: 'This canvas has been deleted by its owner'
-    });
+  socket.on('client-undo', (canvasId: string) => {
+    const roomState = canvasState.get(canvasId);
+    if (roomState && roomState.currentIndex > 0) {
+      roomState.currentIndex--;
+      updateAndBroadcast(canvasId, roomState);
+    }
+  });
+
+  socket.on('client-redo', (canvasId: string) => {
+    const roomState = canvasState.get(canvasId);
+    if (roomState && roomState.currentIndex < roomState.history.length - 1) {
+      roomState.currentIndex++;
+      updateAndBroadcast(canvasId, roomState);
+    }
+  });
+
+  socket.on('cursor-move', (data) => {
+    socket.to(`canvas:${data.canvasId}`).emit('remote-cursor', { userId: socket.id, ...data });
+  });
+
+  socket.on('cursor-leave', (canvasId: string) => {
+    socket.to(`canvas:${canvasId}`).emit('remote-cursor-leave', { userId: socket.id });
   });
   
-  // Handle disconnection
   socket.on('disconnect', () => {
-    console.log(`❌ User disconnected: ${socket.id}`);
-    
-    // Clean up if user was in a canvas
     if (currentCanvas) {
       const users = canvasUsers.get(currentCanvas);
       if (users) {
         users.delete(socket.id);
         if (users.size === 0) {
           canvasUsers.delete(currentCanvas);
+          canvasState.delete(currentCanvas);
         }
+        io.to(`canvas:${currentCanvas}`).emit('canvas-users', { users: Array.from(users) });
       }
-      
-      // Broadcast updated user count to remaining users
-      io.to(`canvas:${currentCanvas}`).emit('canvas-users', {
-        users: Array.from(canvasUsers.get(currentCanvas) || []),
-        canvasId: currentCanvas
-      });
     }
   });
 });
 
-// Start server
 httpServer.listen(PORT, () => {
-  console.log(`🚀 Socket.io server running on http://localhost:${PORT}`);
-  console.log(`📡 Accepting connections from: ${process.env.CLIENT_URL || 'http://localhost:3000'}`);
-  console.log(`💚 Health check: http://localhost:${PORT}/health`);
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
