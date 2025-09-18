@@ -26,7 +26,7 @@ export default function HomePage() {
             Get Started
           </Link>
         </div>
-      </div>
+      </div> 
     </div>
   )
 }
