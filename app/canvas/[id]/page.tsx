@@ -249,7 +249,7 @@ export default function EditCanvasPage({ params }: PageProps) {
                 </div>
                 <div>
                   <p className="text-white font-semibold text-lg">Saving canvas...</p>
-                  <p className="text-white/60 text-sm">Please don't close this tab</p>
+                  <p className="text-white/60 text-sm">Please don&apos;t close this tab</p>
                 </div>
               </div>
             </div>
