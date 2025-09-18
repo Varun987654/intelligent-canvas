@@ -1,17 +1,21 @@
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { Socket } from 'socket.io-client'
 
-interface Cursor {
-  userId: string
-  x: number
-  y: number
-  userName: string
-  color: string
-  lastUpdate: number
+interface CursorData {
+       userId: string
+       x: number
+       y: number
+       userName: string
+}
+     
+interface Cursor extends CursorData {
+color: string
+lastUpdate: number
 }
 
 interface RemoteCursorsProps {
-  socket: any
+  socket: Socket | null
   containerRef: React.RefObject<HTMLDivElement | null>
 }
 
@@ -23,7 +27,7 @@ export default function RemoteCursors({ socket, containerRef }: RemoteCursorsPro
   useEffect(() => {
     if (!socket) return
 
-    const handleRemoteCursor = (data: any) => {
+    const handleRemoteCursor = (data: CursorData) => {
       setCursors(prev => {
         const updated = new Map(prev)
         updated.set(data.userId, {
@@ -35,7 +39,7 @@ export default function RemoteCursors({ socket, containerRef }: RemoteCursorsPro
       })
     }
 
-    const handleCursorLeave = (data: any) => {
+    const handleCursorLeave = (data: CursorData) => {
       setCursors(prev => {
         const updated = new Map(prev)
         updated.delete(data.userId)

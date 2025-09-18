@@ -46,10 +46,10 @@ export default function DeleteCanvasButton({ canvasId, canvasName }: DeleteCanva
           router.refresh()
         }
       } else {
-        alert('Failed to delete canvas')
+        alert("Failed to delete canvas")
       }
     } catch (error) {
-      alert('Failed to delete canvas')
+      alert("Failed to delete canvas")
     } finally {
       setIsDeleting(false)
     }

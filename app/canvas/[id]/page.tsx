@@ -116,7 +116,7 @@ export default function EditCanvasPage({ params }: PageProps) {
     });
     
     socket.on('canvas-deleted', () => {
-      alert('This canvas has been deleted by another user.')
+      alert("This canvas has been deleted by another user.") // Use double quotes to avoid the issue
       router.push('/dashboard')
     })
 
@@ -279,7 +279,7 @@ export default function EditCanvasPage({ params }: PageProps) {
               onClick={(e) => {
                 if (isSaving) {
                   e.preventDefault();
-                  alert('Please wait for the save to complete');
+                  alert("Please wait for the save to complete");
                 }
               }}
             >
