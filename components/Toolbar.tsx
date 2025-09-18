@@ -87,7 +87,7 @@ export default function Toolbar({
                         key={tool.id}
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
-                        onClick={() => updateSetting('tool', tool.id as any)}
+                        onClick={() => updateSetting('tool', tool.id as DrawingSettings['tool'])}
                         className={`relative p-3 rounded-lg transition-all group ${
                           isActive 
                             ? 'bg-gradient-to-br from-purple-500 to-purple-600 text-white shadow-lg' 
